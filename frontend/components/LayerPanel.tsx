@@ -5,16 +5,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { Layer } from "~backend/design/types";
 
 interface LayerPanelProps {
-  layers: Layer[];
+  layers?: Layer[];
   selectedLayerId: string | null;
   onLayerSelect: (layerId: string) => void;
   onLayerUpdate: (layerId: string, updates: Partial<Layer>) => void;
   onLayerDelete: (layerId: string) => void;
-  onLayerDuplicate: (layerId: string) => void;
+  onLayerDuplicate?: (layerId: string) => void;
 }
 
 export function LayerPanel({
-  layers,
+  layers = [],
   selectedLayerId,
   onLayerSelect,
   onLayerUpdate,
@@ -36,6 +36,17 @@ export function LayerPanel({
     }
   };
 
+  if (!Array.isArray(layers)) {
+    return (
+      <div className="p-2">
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <Square className="h-8 w-8 mx-auto mb-2" />
+          <p className="text-sm">Loading layers...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-2">
       {layers.length === 0 ? (
@@ -47,7 +58,7 @@ export function LayerPanel({
       ) : (
         <div className="space-y-1">
           {layers.map((layer) => (
-            <DropdownMenu key={layer.id}>
+            <div key={layer.id} className="relative">
               <div
                 className={`flex items-center space-x-2 p-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
                   selectedLayerId === layer.id
@@ -62,7 +73,7 @@ export function LayerPanel({
                 
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                    {layer.name}
+                    {layer.name || 'Unnamed Layer'}
                   </p>
                 </div>
 
@@ -76,7 +87,7 @@ export function LayerPanel({
                       onLayerUpdate(layer.id, { visible: !layer.visible });
                     }}
                   >
-                    {layer.visible ? (
+                    {layer.visible !== false ? (
                       <Eye className="h-3 w-3" />
                     ) : (
                       <EyeOff className="h-3 w-3 text-gray-400" />
@@ -99,32 +110,35 @@ export function LayerPanel({
                     )}
                   </Button>
 
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                    >
-                      <span className="text-xs">⋯</span>
-                    </Button>
-                  </DropdownMenuTrigger>
+                  {onLayerDuplicate && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                        >
+                          <span className="text-xs">⋯</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onLayerDuplicate(layer.id)}>
+                          <Copy className="h-4 w-4 mr-2" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => onLayerDelete(layer.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
-              
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onLayerDuplicate(layer.id)}>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => onLayerDelete(layer.id)}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            </div>
           ))}
         </div>
       )}

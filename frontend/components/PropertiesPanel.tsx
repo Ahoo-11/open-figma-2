@@ -20,16 +20,28 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
   }
 
   const updateProperty = (key: string, value: any) => {
-    onLayerUpdate({
-      properties: {
-        ...selectedLayer.properties,
-        [key]: value,
-      },
-    });
+    try {
+      onLayerUpdate({
+        properties: {
+          ...(selectedLayer.properties || {}),
+          [key]: value,
+        },
+      });
+    } catch (error) {
+      console.error("Error updating property:", error);
+    }
   };
 
   const updateBasicProperty = (key: keyof Layer, value: any) => {
-    onLayerUpdate({ [key]: value });
+    try {
+      onLayerUpdate({ [key]: value });
+    } catch (error) {
+      console.error("Error updating basic property:", error);
+    }
+  };
+
+  const safeValue = (value: any, fallback: any) => {
+    return value !== undefined && value !== null ? value : fallback;
   };
 
   return (
@@ -42,7 +54,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
           <Label htmlFor="name">Name</Label>
           <Input
             id="name"
-            value={selectedLayer.name}
+            value={safeValue(selectedLayer.name, "")}
             onChange={(e) => updateBasicProperty("name", e.target.value)}
           />
         </div>
@@ -53,8 +65,8 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="x"
               type="number"
-              value={selectedLayer.x}
-              onChange={(e) => updateBasicProperty("x", parseFloat(e.target.value))}
+              value={safeValue(selectedLayer.x, 0)}
+              onChange={(e) => updateBasicProperty("x", parseFloat(e.target.value) || 0)}
             />
           </div>
           <div>
@@ -62,8 +74,8 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="y"
               type="number"
-              value={selectedLayer.y}
-              onChange={(e) => updateBasicProperty("y", parseFloat(e.target.value))}
+              value={safeValue(selectedLayer.y, 0)}
+              onChange={(e) => updateBasicProperty("y", parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>
@@ -74,8 +86,8 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="width"
               type="number"
-              value={selectedLayer.width}
-              onChange={(e) => updateBasicProperty("width", parseFloat(e.target.value))}
+              value={safeValue(selectedLayer.width, 0)}
+              onChange={(e) => updateBasicProperty("width", parseFloat(e.target.value) || 0)}
             />
           </div>
           <div>
@@ -83,8 +95,8 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="height"
               type="number"
-              value={selectedLayer.height}
-              onChange={(e) => updateBasicProperty("height", parseFloat(e.target.value))}
+              value={safeValue(selectedLayer.height, 0)}
+              onChange={(e) => updateBasicProperty("height", parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>
@@ -93,13 +105,15 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
           <Label htmlFor="opacity">Opacity</Label>
           <div className="mt-2">
             <Slider
-              value={[selectedLayer.opacity * 100]}
+              value={[safeValue(selectedLayer.opacity, 1) * 100]}
               onValueChange={([value]) => updateBasicProperty("opacity", value / 100)}
               max={100}
               step={1}
             />
           </div>
-          <div className="text-sm text-gray-500 mt-1">{Math.round(selectedLayer.opacity * 100)}%</div>
+          <div className="text-sm text-gray-500 mt-1">
+            {Math.round(safeValue(selectedLayer.opacity, 1) * 100)}%
+          </div>
         </div>
       </div>
 
@@ -113,7 +127,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="fill"
               type="color"
-              value={selectedLayer.properties.fill || "#000000"}
+              value={safeValue(selectedLayer.properties?.fill, "#000000")}
               onChange={(e) => updateProperty("fill", e.target.value)}
             />
           </div>
@@ -123,7 +137,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="stroke"
               type="color"
-              value={selectedLayer.properties.stroke || "#000000"}
+              value={safeValue(selectedLayer.properties?.stroke, "#000000")}
               onChange={(e) => updateProperty("stroke", e.target.value)}
             />
           </div>
@@ -134,8 +148,8 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
               id="strokeWidth"
               type="number"
               min="0"
-              value={selectedLayer.properties.strokeWidth || 1}
-              onChange={(e) => updateProperty("strokeWidth", parseFloat(e.target.value))}
+              value={safeValue(selectedLayer.properties?.strokeWidth, 1)}
+              onChange={(e) => updateProperty("strokeWidth", parseFloat(e.target.value) || 0)}
             />
           </div>
 
@@ -146,8 +160,8 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
                 id="cornerRadius"
                 type="number"
                 min="0"
-                value={selectedLayer.properties.cornerRadius || 0}
-                onChange={(e) => updateProperty("cornerRadius", parseFloat(e.target.value))}
+                value={safeValue(selectedLayer.properties?.cornerRadius, 0)}
+                onChange={(e) => updateProperty("cornerRadius", parseFloat(e.target.value) || 0)}
               />
             </div>
           )}
@@ -162,7 +176,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Label htmlFor="text">Text</Label>
             <Input
               id="text"
-              value={selectedLayer.properties.text || ""}
+              value={safeValue(selectedLayer.properties?.text, "")}
               onChange={(e) => updateProperty("text", e.target.value)}
             />
           </div>
@@ -173,15 +187,15 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
               id="fontSize"
               type="number"
               min="8"
-              value={selectedLayer.properties.fontSize || 16}
-              onChange={(e) => updateProperty("fontSize", parseFloat(e.target.value))}
+              value={safeValue(selectedLayer.properties?.fontSize, 16)}
+              onChange={(e) => updateProperty("fontSize", parseFloat(e.target.value) || 16)}
             />
           </div>
 
           <div>
             <Label htmlFor="fontFamily">Font Family</Label>
             <Select
-              value={selectedLayer.properties.fontFamily || "Arial"}
+              value={safeValue(selectedLayer.properties?.fontFamily, "Arial")}
               onValueChange={(value) => updateProperty("fontFamily", value)}
             >
               <SelectTrigger>
@@ -200,7 +214,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
           <div>
             <Label htmlFor="fontWeight">Font Weight</Label>
             <Select
-              value={selectedLayer.properties.fontWeight || "normal"}
+              value={safeValue(selectedLayer.properties?.fontWeight, "normal")}
               onValueChange={(value) => updateProperty("fontWeight", value)}
             >
               <SelectTrigger>
@@ -217,7 +231,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
           <div>
             <Label htmlFor="textAlign">Text Align</Label>
             <Select
-              value={selectedLayer.properties.textAlign || "left"}
+              value={safeValue(selectedLayer.properties?.textAlign, "left")}
               onValueChange={(value) => updateProperty("textAlign", value)}
             >
               <SelectTrigger>
@@ -236,7 +250,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             <Input
               id="textFill"
               type="color"
-              value={selectedLayer.properties.fill || "#000000"}
+              value={safeValue(selectedLayer.properties?.fill, "#000000")}
               onChange={(e) => updateProperty("fill", e.target.value)}
             />
           </div>

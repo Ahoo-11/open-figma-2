@@ -30,6 +30,7 @@ export function DesignEditor() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const collaborationRef = useRef<any>(null);
   const { toast } = useToast();
 
@@ -41,7 +42,11 @@ export function DesignEditor() {
 
     return () => {
       if (collaborationRef.current) {
-        collaborationRef.current.close();
+        try {
+          collaborationRef.current.close();
+        } catch (err) {
+          console.error("Error closing collaboration stream:", err);
+        }
       }
     };
   }, [designId]);
@@ -94,11 +99,24 @@ export function DesignEditor() {
 
   const loadDesignFile = async () => {
     try {
-      const response = await backend.design.getDesignFile({ id: parseInt(designId!) });
+      setError(null);
+      if (!designId) {
+        throw new Error("No design ID provided");
+      }
+      
+      const response = await backend.design.getDesignFile({ id: parseInt(designId, 10) });
       setDesignFile(response);
-      setCanvasData(response.canvas_data);
+      
+      // Ensure canvas data has proper structure
+      const safeCanvasData = {
+        layers: Array.isArray(response.canvas_data?.layers) ? response.canvas_data.layers : [],
+        viewport: response.canvas_data?.viewport || { x: 0, y: 0, zoom: 1 }
+      };
+      
+      setCanvasData(safeCanvasData);
     } catch (error) {
       console.error("Failed to load design file:", error);
+      setError("Failed to load design file");
       toast({
         title: "Error",
         description: "Failed to load design file",
@@ -111,11 +129,13 @@ export function DesignEditor() {
 
   const setupCollaboration = async () => {
     try {
+      if (!designId) return;
+      
       const userId = `user_${Math.random().toString(36).substr(2, 9)}`;
       const userName = `User ${Math.floor(Math.random() * 1000)}`;
       
       const stream = await backend.collaboration.collaborate({
-        design_file_id: designId!,
+        design_file_id: designId,
         user_id: userId,
         user_name: userName,
       });
@@ -137,22 +157,32 @@ export function DesignEditor() {
   };
 
   const handleCollaborationEvent = (event: CollaborationEvent) => {
-    switch (event.type) {
-      case "cursor":
-        if (event.data.left) {
-          setCollaborators(prev => prev.filter(c => c.user_id !== event.user_id));
-        } else {
-          setCollaborators(prev => {
-            const filtered = prev.filter(c => c.user_id !== event.user_id);
-            return [...filtered, event.data];
-          });
-        }
-        break;
-      case "layer_update":
-      case "layer_add":
-      case "layer_delete":
-        loadDesignFile();
-        break;
+    try {
+      switch (event.type) {
+        case "cursor":
+          if (event.data?.left) {
+            setCollaborators(prev => prev.filter(c => c.user_id !== event.user_id));
+          } else if (event.data?.x !== undefined && event.data?.y !== undefined) {
+            setCollaborators(prev => {
+              const filtered = prev.filter(c => c.user_id !== event.user_id);
+              return [...filtered, {
+                user_id: event.user_id,
+                user_name: event.user_name,
+                x: event.data.x,
+                y: event.data.y,
+                color: event.data.color || "#007AFF"
+              }];
+            });
+          }
+          break;
+        case "layer_update":
+        case "layer_add":
+        case "layer_delete":
+          loadDesignFile();
+          break;
+      }
+    } catch (error) {
+      console.error("Error handling collaboration event:", error);
     }
   };
 
@@ -173,14 +203,18 @@ export function DesignEditor() {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    sendCollaborationEvent({
-      type: "cursor",
-      data: { x, y, color: "#007AFF" }
-    });
+    try {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      sendCollaborationEvent({
+        type: "cursor",
+        data: { x, y, color: "#007AFF" }
+      });
+    } catch (error) {
+      console.error("Error handling mouse move:", error);
+    }
   };
 
   const saveDesignFile = async (saveVersion = false) => {
@@ -211,71 +245,86 @@ export function DesignEditor() {
   };
 
   const addLayer = (layer: Omit<Layer, "id">) => {
-    const newLayer: Layer = {
-      ...layer,
-      id: `layer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    };
+    try {
+      const newLayer: Layer = {
+        ...layer,
+        id: `layer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      };
 
-    const updatedCanvasData = {
-      ...canvasData,
-      layers: [...canvasData.layers, newLayer],
-    };
+      const updatedCanvasData = {
+        ...canvasData,
+        layers: [...(canvasData.layers || []), newLayer],
+      };
 
-    setCanvasData(updatedCanvasData);
-    setSelectedLayerId(newLayer.id);
+      setCanvasData(updatedCanvasData);
+      setSelectedLayerId(newLayer.id);
 
-    sendCollaborationEvent({
-      type: "layer_add",
-      data: newLayer,
-    });
+      sendCollaborationEvent({
+        type: "layer_add",
+        data: newLayer,
+      });
+    } catch (error) {
+      console.error("Error adding layer:", error);
+    }
   };
 
   const updateLayer = (layerId: string, updates: Partial<Layer>) => {
-    const updatedCanvasData = {
-      ...canvasData,
-      layers: canvasData.layers.map(layer =>
-        layer.id === layerId ? { ...layer, ...updates } : layer
-      ),
-    };
+    try {
+      const updatedCanvasData = {
+        ...canvasData,
+        layers: (canvasData.layers || []).map(layer =>
+          layer.id === layerId ? { ...layer, ...updates } : layer
+        ),
+      };
 
-    setCanvasData(updatedCanvasData);
+      setCanvasData(updatedCanvasData);
 
-    sendCollaborationEvent({
-      type: "layer_update",
-      data: { layerId, updates },
-    });
+      sendCollaborationEvent({
+        type: "layer_update",
+        data: { layerId, updates },
+      });
+    } catch (error) {
+      console.error("Error updating layer:", error);
+    }
   };
 
   const deleteLayer = (layerId: string) => {
-    const updatedCanvasData = {
-      ...canvasData,
-      layers: canvasData.layers.filter(layer => layer.id !== layerId),
-    };
+    try {
+      const updatedCanvasData = {
+        ...canvasData,
+        layers: (canvasData.layers || []).filter(layer => layer.id !== layerId),
+      };
 
-    setCanvasData(updatedCanvasData);
-    if (selectedLayerId === layerId) {
-      setSelectedLayerId(null);
+      setCanvasData(updatedCanvasData);
+      if (selectedLayerId === layerId) {
+        setSelectedLayerId(null);
+      }
+
+      sendCollaborationEvent({
+        type: "layer_delete",
+        data: { layerId },
+      });
+    } catch (error) {
+      console.error("Error deleting layer:", error);
     }
-
-    sendCollaborationEvent({
-      type: "layer_delete",
-      data: { layerId },
-    });
   };
 
   const duplicateLayer = (layerId: string) => {
-    const layer = canvasData.layers.find(l => l.id === layerId);
-    if (!layer) return;
+    try {
+      const layer = (canvasData.layers || []).find(l => l.id === layerId);
+      if (!layer) return;
 
-    const duplicatedLayer: Layer = {
-      ...layer,
-      id: `layer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: `${layer.name} Copy`,
-      x: layer.x + 10,
-      y: layer.y + 10,
-    };
+      const duplicatedLayer: Omit<Layer, "id"> = {
+        ...layer,
+        name: `${layer.name} Copy`,
+        x: layer.x + 10,
+        y: layer.y + 10,
+      };
 
-    addLayer(duplicatedLayer);
+      addLayer(duplicatedLayer);
+    } catch (error) {
+      console.error("Error duplicating layer:", error);
+    }
   };
 
   const handleDuplicateFile = async () => {
@@ -297,7 +346,8 @@ export function DesignEditor() {
     }
   };
 
-  const selectedLayer = selectedLayerId ? canvasData.layers.find(l => l.id === selectedLayerId) : null;
+  const selectedLayer = selectedLayerId && canvasData.layers ? 
+    canvasData.layers.find(l => l.id === selectedLayerId) : null;
 
   if (loading) {
     return (
@@ -310,12 +360,16 @@ export function DesignEditor() {
     );
   }
 
-  if (!designFile) {
+  if (error || !designFile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Design not found</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">The design file you're looking for doesn't exist.</p>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            {error || "Design not found"}
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            {error || "The design file you're looking for doesn't exist."}
+          </p>
           <Link to="/">
             <Button>
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -487,25 +541,29 @@ export function DesignEditor() {
       </div>
 
       {/* Dialogs and Panels */}
-      <VersionHistory
-        designFileId={parseInt(designId!)}
-        isOpen={showVersionHistory}
-        onClose={() => setShowVersionHistory(false)}
-        onVersionRestored={loadDesignFile}
-      />
-      
-      <ExportDialog
-        designFileId={parseInt(designId!)}
-        designFileName={designFile.name}
-        isOpen={showExportDialog}
-        onClose={() => setShowExportDialog(false)}
-      />
-      
-      <CommentsPanel
-        designFileId={parseInt(designId!)}
-        isOpen={showComments}
-        onClose={() => setShowComments(false)}
-      />
+      {designId && (
+        <>
+          <VersionHistory
+            designFileId={parseInt(designId)}
+            isOpen={showVersionHistory}
+            onClose={() => setShowVersionHistory(false)}
+            onVersionRestored={loadDesignFile}
+          />
+          
+          <ExportDialog
+            designFileId={parseInt(designId)}
+            designFileName={designFile.name}
+            isOpen={showExportDialog}
+            onClose={() => setShowExportDialog(false)}
+          />
+          
+          <CommentsPanel
+            designFileId={parseInt(designId)}
+            isOpen={showComments}
+            onClose={() => setShowComments(false)}
+          />
+        </>
+      )}
       
       <KeyboardShortcuts
         isOpen={showKeyboardShortcuts}
