@@ -1,6 +1,7 @@
 import React from "react";
-import { Eye, EyeOff, Lock, Unlock, Trash2, Square, Circle, Type, Folder } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock, Trash2, Square, Circle, Type, Folder, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Layer } from "~backend/design/types";
 
 interface LayerPanelProps {
@@ -9,6 +10,7 @@ interface LayerPanelProps {
   onLayerSelect: (layerId: string) => void;
   onLayerUpdate: (layerId: string, updates: Partial<Layer>) => void;
   onLayerDelete: (layerId: string) => void;
+  onLayerDuplicate: (layerId: string) => void;
 }
 
 export function LayerPanel({
@@ -17,6 +19,7 @@ export function LayerPanel({
   onLayerSelect,
   onLayerUpdate,
   onLayerDelete,
+  onLayerDuplicate,
 }: LayerPanelProps) {
   const getLayerIcon = (type: Layer["type"]) => {
     switch (type) {
@@ -44,71 +47,84 @@ export function LayerPanel({
       ) : (
         <div className="space-y-1">
           {layers.map((layer) => (
-            <div
-              key={layer.id}
-              className={`flex items-center space-x-2 p-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                selectedLayerId === layer.id
-                  ? "bg-blue-100 dark:bg-blue-900"
-                  : ""
-              }`}
-              onClick={() => onLayerSelect(layer.id)}
-            >
-              <div className="flex-shrink-0 text-gray-600 dark:text-gray-400">
-                {getLayerIcon(layer.type)}
+            <DropdownMenu key={layer.id}>
+              <div
+                className={`flex items-center space-x-2 p-2 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                  selectedLayerId === layer.id
+                    ? "bg-blue-100 dark:bg-blue-900"
+                    : ""
+                }`}
+                onClick={() => onLayerSelect(layer.id)}
+              >
+                <div className="flex-shrink-0 text-gray-600 dark:text-gray-400">
+                  {getLayerIcon(layer.type)}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {layer.name}
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onLayerUpdate(layer.id, { visible: !layer.visible });
+                    }}
+                  >
+                    {layer.visible ? (
+                      <Eye className="h-3 w-3" />
+                    ) : (
+                      <EyeOff className="h-3 w-3 text-gray-400" />
+                    )}
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onLayerUpdate(layer.id, { locked: !layer.locked });
+                    }}
+                  >
+                    {layer.locked ? (
+                      <Lock className="h-3 w-3 text-gray-400" />
+                    ) : (
+                      <Unlock className="h-3 w-3" />
+                    )}
+                  </Button>
+
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                    >
+                      <span className="text-xs">⋯</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                </div>
               </div>
               
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {layer.name}
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLayerUpdate(layer.id, { visible: !layer.visible });
-                  }}
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onLayerDuplicate(layer.id)}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => onLayerDelete(layer.id)}
+                  className="text-red-600 hover:text-red-700"
                 >
-                  {layer.visible ? (
-                    <Eye className="h-3 w-3" />
-                  ) : (
-                    <EyeOff className="h-3 w-3 text-gray-400" />
-                  )}
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLayerUpdate(layer.id, { locked: !layer.locked });
-                  }}
-                >
-                  {layer.locked ? (
-                    <Lock className="h-3 w-3 text-gray-400" />
-                  ) : (
-                    <Unlock className="h-3 w-3" />
-                  )}
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onLayerDelete(layer.id);
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ))}
         </div>
       )}

@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Save, Users, MessageCircle, Download, Layers, Square, Circle, Type, Hand, MousePointer } from "lucide-react";
+import { ArrowLeft, Save, Users, MessageCircle, Download, Layers, Square, Circle, Type, Hand, MousePointer, Clock, Keyboard, MoreHorizontal, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { Canvas } from "./Canvas";
 import { LayerPanel } from "./LayerPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { CollaborationCursors } from "./CollaborationCursors";
+import { VersionHistory } from "./VersionHistory";
+import { ExportDialog } from "./ExportDialog";
+import { CommentsPanel } from "./CommentsPanel";
+import { KeyboardShortcuts } from "./KeyboardShortcuts";
 import backend from "~backend/client";
 import type { DesignFile, Layer, CanvasData, CollaborationEvent, CursorPosition } from "~backend/design/types";
 
@@ -21,6 +26,10 @@ export function DesignEditor() {
   const [collaborators, setCollaborators] = useState<CursorPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const collaborationRef = useRef<any>(null);
   const { toast } = useToast();
 
@@ -36,6 +45,52 @@ export function DesignEditor() {
       }
     };
   }, [designId]);
+
+  useEffect(() => {
+    const handleKeyboard = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case 'v':
+          setActiveTool("select");
+          break;
+        case 'r':
+          setActiveTool("rectangle");
+          break;
+        case 'o':
+          setActiveTool("circle");
+          break;
+        case 't':
+          setActiveTool("text");
+          break;
+        case 'delete':
+        case 'backspace':
+          if (selectedLayerId) {
+            deleteLayer(selectedLayerId);
+          }
+          break;
+        case 'escape':
+          setSelectedLayerId(null);
+          break;
+        case 's':
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            saveDesignFile();
+          }
+          break;
+        case '?':
+          if (e.shiftKey) {
+            setShowKeyboardShortcuts(true);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [selectedLayerId]);
 
   const loadDesignFile = async () => {
     try {
@@ -67,7 +122,6 @@ export function DesignEditor() {
 
       collaborationRef.current = stream;
 
-      // Listen for collaboration events
       (async () => {
         try {
           for await (const event of stream) {
@@ -97,7 +151,6 @@ export function DesignEditor() {
       case "layer_update":
       case "layer_add":
       case "layer_delete":
-        // Reload canvas data when other users make changes
         loadDesignFile();
         break;
     }
@@ -210,32 +263,35 @@ export function DesignEditor() {
     });
   };
 
-  const handleExport = async () => {
+  const duplicateLayer = (layerId: string) => {
+    const layer = canvasData.layers.find(l => l.id === layerId);
+    if (!layer) return;
+
+    const duplicatedLayer: Layer = {
+      ...layer,
+      id: `layer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: `${layer.name} Copy`,
+      x: layer.x + 10,
+      y: layer.y + 10,
+    };
+
+    addLayer(duplicatedLayer);
+  };
+
+  const handleDuplicateFile = async () => {
     if (!designFile) return;
 
     try {
-      const response = await backend.design.exportSVG({ design_file_id: designFile.id });
-      
-      // Create downloadable SVG file
-      const blob = new Blob([response.svg], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${designFile.name}.svg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
+      await backend.design.duplicateDesignFile({ id: designFile.id });
       toast({
         title: "Success",
-        description: "Design exported as SVG",
+        description: "Design file duplicated",
       });
     } catch (error) {
-      console.error("Failed to export design:", error);
+      console.error("Failed to duplicate file:", error);
       toast({
         title: "Error",
-        description: "Failed to export design",
+        description: "Failed to duplicate file",
         variant: "destructive",
       });
     }
@@ -291,6 +347,7 @@ export function DesignEditor() {
             size="sm"
             className={activeTool === "select" ? "bg-gray-100 dark:bg-gray-700" : ""}
             onClick={() => setActiveTool("select")}
+            title="Select (V)"
           >
             <MousePointer className="h-4 w-4" />
           </Button>
@@ -299,6 +356,7 @@ export function DesignEditor() {
             size="sm"
             className={activeTool === "rectangle" ? "bg-gray-100 dark:bg-gray-700" : ""}
             onClick={() => setActiveTool("rectangle")}
+            title="Rectangle (R)"
           >
             <Square className="h-4 w-4" />
           </Button>
@@ -307,6 +365,7 @@ export function DesignEditor() {
             size="sm"
             className={activeTool === "circle" ? "bg-gray-100 dark:bg-gray-700" : ""}
             onClick={() => setActiveTool("circle")}
+            title="Circle (O)"
           >
             <Circle className="h-4 w-4" />
           </Button>
@@ -315,6 +374,7 @@ export function DesignEditor() {
             size="sm"
             className={activeTool === "text" ? "bg-gray-100 dark:bg-gray-700" : ""}
             onClick={() => setActiveTool("text")}
+            title="Text (T)"
           >
             <Type className="h-4 w-4" />
           </Button>
@@ -323,6 +383,7 @@ export function DesignEditor() {
             size="sm"
             className={activeTool === "pan" ? "bg-gray-100 dark:bg-gray-700" : ""}
             onClick={() => setActiveTool("pan")}
+            title="Pan (Space)"
           >
             <Hand className="h-4 w-4" />
           </Button>
@@ -333,14 +394,47 @@ export function DesignEditor() {
             <Users className="h-4 w-4" />
             <span>{collaborators.length + 1}</span>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExport}>
+          
+          <Button variant="ghost" size="sm" onClick={() => setShowComments(true)}>
+            <MessageCircle className="h-4 w-4" />
+          </Button>
+          
+          <Button variant="ghost" size="sm" onClick={() => setShowVersionHistory(true)}>
+            <Clock className="h-4 w-4" />
+          </Button>
+          
+          <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}>
             <Download className="h-4 w-4 mr-1" />
             Export
           </Button>
+          
           <Button size="sm" onClick={() => saveDesignFile()} disabled={saving}>
             <Save className="h-4 w-4 mr-1" />
             {saving ? "Saving..." : "Save"}
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleDuplicateFile}>
+                <Copy className="h-4 w-4 mr-2" />
+                Duplicate File
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => saveDesignFile(true)}>
+                <Save className="h-4 w-4 mr-2" />
+                Save Version
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowKeyboardShortcuts(true)}>
+                <Keyboard className="h-4 w-4 mr-2" />
+                Keyboard Shortcuts
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -360,6 +454,7 @@ export function DesignEditor() {
             onLayerSelect={setSelectedLayerId}
             onLayerUpdate={updateLayer}
             onLayerDelete={deleteLayer}
+            onLayerDuplicate={duplicateLayer}
           />
         </div>
 
@@ -390,6 +485,32 @@ export function DesignEditor() {
           />
         </div>
       </div>
+
+      {/* Dialogs and Panels */}
+      <VersionHistory
+        designFileId={parseInt(designId!)}
+        isOpen={showVersionHistory}
+        onClose={() => setShowVersionHistory(false)}
+        onVersionRestored={loadDesignFile}
+      />
+      
+      <ExportDialog
+        designFileId={parseInt(designId!)}
+        designFileName={designFile.name}
+        isOpen={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+      />
+      
+      <CommentsPanel
+        designFileId={parseInt(designId!)}
+        isOpen={showComments}
+        onClose={() => setShowComments(false)}
+      />
+      
+      <KeyboardShortcuts
+        isOpen={showKeyboardShortcuts}
+        onClose={() => setShowKeyboardShortcuts(false)}
+      />
     </div>
   );
 }

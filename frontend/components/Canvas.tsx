@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import type { CanvasData, Layer } from "~backend/design/types";
 import type { Tool } from "./DesignEditor";
 
@@ -12,7 +12,7 @@ interface CanvasProps {
   onViewportChange: (viewport: { x: number; y: number; zoom: number }) => void;
 }
 
-export function Canvas({
+export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   canvasData,
   selectedLayerId,
   activeTool,
@@ -20,12 +20,16 @@ export function Canvas({
   onLayerAdd,
   onLayerUpdate,
   onViewportChange,
-}: CanvasProps) {
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
+
+  useImperativeHandle(ref, () => canvasRef.current!);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -113,10 +117,15 @@ export function Canvas({
           ctx.fillRect(layer.x, layer.y, layer.width, layer.height);
         }
         
-        if (layer.properties.stroke) {
+        if (layer.properties.stroke && layer.properties.strokeWidth) {
           ctx.strokeStyle = layer.properties.stroke;
-          ctx.lineWidth = layer.properties.strokeWidth || 1;
-          ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
+          ctx.lineWidth = layer.properties.strokeWidth;
+          if (layer.properties.cornerRadius) {
+            drawRoundedRect(ctx, layer.x, layer.y, layer.width, layer.height, layer.properties.cornerRadius);
+            ctx.stroke();
+          } else {
+            ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
+          }
         }
         break;
 
@@ -130,9 +139,9 @@ export function Canvas({
         ctx.fillStyle = layer.properties.fill || "#000000";
         ctx.fill();
         
-        if (layer.properties.stroke) {
+        if (layer.properties.stroke && layer.properties.strokeWidth) {
           ctx.strokeStyle = layer.properties.stroke;
-          ctx.lineWidth = layer.properties.strokeWidth || 1;
+          ctx.lineWidth = layer.properties.strokeWidth;
           ctx.stroke();
         }
         break;
@@ -148,9 +157,9 @@ export function Canvas({
     // Draw selection outline
     if (isSelected) {
       ctx.strokeStyle = "#007AFF";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
-      ctx.strokeRect(layer.x - 2, layer.y - 2, layer.width + 4, layer.height + 4);
+      ctx.lineWidth = 2 / canvasData.viewport.zoom;
+      ctx.setLineDash([5 / canvasData.viewport.zoom, 5 / canvasData.viewport.zoom]);
+      ctx.strokeRect(layer.x - 2 / canvasData.viewport.zoom, layer.y - 2 / canvasData.viewport.zoom, layer.width + 4 / canvasData.viewport.zoom, layer.height + 4 / canvasData.viewport.zoom);
       ctx.setLineDash([]);
     }
 
@@ -187,9 +196,19 @@ export function Canvas({
       const layer = canvasData.layers[i];
       if (!layer.visible || layer.locked) continue;
 
-      if (x >= layer.x && x <= layer.x + layer.width &&
-          y >= layer.y && y <= layer.y + layer.height) {
-        return layer;
+      if (layer.type === "circle") {
+        const centerX = layer.x + layer.width / 2;
+        const centerY = layer.y + layer.height / 2;
+        const radius = Math.min(layer.width, layer.height) / 2;
+        const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+        if (distance <= radius) {
+          return layer;
+        }
+      } else {
+        if (x >= layer.x && x <= layer.x + layer.width &&
+            y >= layer.y && y <= layer.y + layer.height) {
+          return layer;
+        }
       }
     }
     return null;
@@ -197,7 +216,14 @@ export function Canvas({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePosition(e);
+    const rawPos = { x: e.clientX, y: e.clientY };
     setDragStart(pos);
+    setLastPanPoint(rawPos);
+
+    if (e.button === 1 || (e.button === 0 && e.spaceKey)) { // Middle mouse or space+click
+      setIsPanning(true);
+      return;
+    }
 
     if (activeTool === "select") {
       const layer = getLayerAt(pos.x, pos.y);
@@ -208,7 +234,7 @@ export function Canvas({
         onLayerSelect(null);
       }
     } else if (activeTool === "pan") {
-      setIsDragging(true);
+      setIsPanning(true);
     } else if (activeTool === "rectangle" || activeTool === "circle" || activeTool === "text") {
       setIsDrawing(true);
       setDrawStart(pos);
@@ -217,8 +243,20 @@ export function Canvas({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePosition(e);
+    const rawPos = { x: e.clientX, y: e.clientY };
 
-    if (isDragging && activeTool === "select" && selectedLayerId) {
+    if (isPanning) {
+      const dx = rawPos.x - lastPanPoint.x;
+      const dy = rawPos.y - lastPanPoint.y;
+      
+      onViewportChange({
+        ...canvasData.viewport,
+        x: canvasData.viewport.x + dx,
+        y: canvasData.viewport.y + dy,
+      });
+      
+      setLastPanPoint(rawPos);
+    } else if (isDragging && activeTool === "select" && selectedLayerId) {
       const dx = pos.x - dragStart.x;
       const dy = pos.y - dragStart.y;
       
@@ -228,15 +266,6 @@ export function Canvas({
       });
       
       setDragStart(pos);
-    } else if (isDragging && activeTool === "pan") {
-      const dx = (pos.x - dragStart.x) * canvasData.viewport.zoom;
-      const dy = (pos.y - dragStart.y) * canvasData.viewport.zoom;
-      
-      onViewportChange({
-        ...canvasData.viewport,
-        x: canvasData.viewport.x + dx,
-        y: canvasData.viewport.y + dy,
-      });
     }
 
     draw();
@@ -313,6 +342,7 @@ export function Canvas({
     }
 
     setIsDragging(false);
+    setIsPanning(false);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -321,25 +351,45 @@ export function Canvas({
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(0.1, Math.min(5, canvasData.viewport.zoom * delta));
     
-    onViewportChange({
-      ...canvasData.viewport,
-      zoom: newZoom,
-    });
+    // Zoom towards mouse position
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const zoomFactor = newZoom / canvasData.viewport.zoom;
+      const newX = mouseX - (mouseX - canvasData.viewport.x) * zoomFactor;
+      const newY = mouseY - (mouseY - canvasData.viewport.y) * zoomFactor;
+      
+      onViewportChange({
+        x: newX,
+        y: newY,
+        zoom: newZoom,
+      });
+    }
+  };
+
+  const getCursorStyle = () => {
+    if (isPanning) return "grabbing";
+    if (activeTool === "pan") return "grab";
+    if (activeTool === "select") return "default";
+    return "crosshair";
   };
 
   return (
     <div className="w-full h-full overflow-hidden bg-gray-100 dark:bg-gray-800">
       <canvas
         ref={canvasRef}
-        className="w-full h-full cursor-crosshair"
+        className="w-full h-full"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
-        style={{
-          cursor: activeTool === "pan" ? "grab" : activeTool === "select" ? "default" : "crosshair"
-        }}
+        style={{ cursor: getCursorStyle() }}
       />
     </div>
   );
-}
+});
+
+Canvas.displayName = "Canvas";

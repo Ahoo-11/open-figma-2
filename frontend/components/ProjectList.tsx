@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Folder, FileText, Calendar } from "lucide-react";
+import { Plus, Folder, FileText, Calendar, Copy, Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,7 +32,6 @@ export function ProjectList() {
       const response = await backend.design.listProjects();
       setProjects(response.projects);
       
-      // Load design files for each project
       const filesPromises = response.projects.map(async (project) => {
         const filesResponse = await backend.design.listDesignFiles({ project_id: project.id });
         return { projectId: project.id, files: filesResponse.design_files };
@@ -106,6 +106,69 @@ export function ProjectList() {
       toast({
         title: "Error",
         description: "Failed to create design file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDuplicateFile = async (fileId: number, fileName: string) => {
+    try {
+      await backend.design.duplicateDesignFile({
+        id: fileId,
+        name: `${fileName} Copy`,
+      });
+      
+      loadProjects();
+      
+      toast({
+        title: "Success",
+        description: "Design file duplicated",
+      });
+    } catch (error) {
+      console.error("Failed to duplicate file:", error);
+      toast({
+        title: "Error",
+        description: "Failed to duplicate file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteFile = async (fileId: number) => {
+    try {
+      await backend.design.deleteDesignFile({ id: fileId });
+      
+      loadProjects();
+      
+      toast({
+        title: "Success",
+        description: "Design file deleted",
+      });
+    } catch (error) {
+      console.error("Failed to delete file:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteProject = async (projectId: number) => {
+    try {
+      await backend.design.deleteProject({ id: projectId });
+      
+      loadProjects();
+      
+      toast({
+        title: "Success",
+        description: "Project deleted",
+      });
+    } catch (error) {
+      console.error("Failed to delete project:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete project",
         variant: "destructive",
       });
     }
@@ -211,6 +274,23 @@ export function ProjectList() {
                       <Plus className="h-4 w-4 mr-1" />
                       New File
                     </Button>
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onClick={() => handleDeleteProject(project.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Project
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardHeader>
@@ -225,19 +305,45 @@ export function ProjectList() {
                 {designFiles[project.id]?.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {designFiles[project.id].map((file) => (
-                      <Link key={file.id} to={`/design/${file.id}`}>
-                        <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                          <CardContent className="p-4">
-                            <div className="flex items-center space-x-2 mb-2">
-                              <FileText className="h-4 w-4 text-gray-600" />
-                              <span className="font-medium text-sm truncate">{file.name}</span>
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Modified {new Date(file.updated_at).toLocaleDateString()}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      </Link>
+                      <div key={file.id} className="relative group">
+                        <Link to={`/design/${file.id}`}>
+                          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                            <CardContent className="p-4">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <FileText className="h-4 w-4 text-gray-600" />
+                                <span className="font-medium text-sm truncate">{file.name}</span>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Modified {new Date(file.updated_at).toLocaleDateString()}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </Link>
+                        
+                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 bg-white shadow">
+                                <MoreHorizontal className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleDuplicateFile(file.id, file.name)}>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Duplicate
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteFile(file.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 ) : (
