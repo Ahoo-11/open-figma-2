@@ -1,10 +1,31 @@
 {
-  "name": "leap-app",
+  "name": "designstudio",
   "version": "1.0.0",
+  "description": "A modern, professional design tool built with cutting-edge web technologies",
   "type": "module",
   "packageManager": "bun",
   "workspaces": [
     "backend",
     "frontend"
-  ]
+  ],
+  "keywords": [
+    "design-tool",
+    "figma-alternative",
+    "ui-design",
+    "vector-graphics",
+    "collaboration",
+    "react",
+    "typescript",
+    "tailwindcss"
+  ],
+  "author": "DesignStudio Team",
+  "license": "MIT",
+  "homepage": "https://github.com/your-username/designstudio#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/designstudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/designstudio/issues"
+  }
 }
