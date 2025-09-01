@@ -1,8 +1,16 @@
 {
-  "name": "frontend",
+  "name": "@designstudio/frontend",
   "version": "1.0.0",
+  "description": "DesignStudio - Professional design tool frontend",
   "type": "module",
   "packageManager": "bun",
+  "scripts": {
+    "dev": "vite dev --port 3000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "type-check": "tsc --noEmit"
+  },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -36,5 +44,14 @@
   },
   "optionalDependencies": {
     "rollup": "^4.49.0"
-  }
+  },
+  "keywords": [
+    "design-tool",
+    "react",
+    "typescript",
+    "tailwindcss",
+    "ui-design"
+  ],
+  "author": "DesignStudio Team",
+  "license": "MIT"
 }
