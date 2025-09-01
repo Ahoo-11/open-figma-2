@@ -26,31 +26,50 @@ export const exportPNG = api<ExportPNGRequest, ExportPNGResponse>(
       throw APIError.notFound("Design file not found");
     }
 
+    // Ensure canvas_data and layers exist
+    const canvasData = designFile.canvas_data || { layers: [] };
+    const layers = Array.isArray(canvasData.layers) ? canvasData.layers : [];
+
     // Generate SVG that can be converted to PNG on the client side
-    const layers = designFile.canvas_data.layers;
     const svgElements = layers
-      .filter(layer => layer.visible)
+      .filter(layer => layer && layer.visible !== false)
       .map(layer => {
-        const commonAttrs = `opacity="${layer.opacity}"`;
+        if (!layer || !layer.properties) {
+          return '';
+        }
+        
+        const commonAttrs = `opacity="${layer.opacity || 1}"`;
         
         switch (layer.type) {
           case "rectangle":
             const rx = layer.properties.cornerRadius || 0;
-            return `  <rect x="${layer.x}" y="${layer.y}" width="${layer.width}" height="${layer.height}" rx="${rx}" fill="${layer.properties.fill || '#000'}" stroke="${layer.properties.stroke || 'none'}" stroke-width="${layer.properties.strokeWidth || 0}" ${commonAttrs} />`;
+            return `  <rect x="${layer.x || 0}" y="${layer.y || 0}" width="${layer.width || 0}" height="${layer.height || 0}" rx="${rx}" fill="${layer.properties.fill || '#000'}" stroke="${layer.properties.stroke || 'none'}" stroke-width="${layer.properties.strokeWidth || 0}" ${commonAttrs} />`;
           
           case "circle":
-            const cx = layer.x + layer.width / 2;
-            const cy = layer.y + layer.height / 2;
-            const r = Math.min(layer.width, layer.height) / 2;
+            const cx = (layer.x || 0) + (layer.width || 0) / 2;
+            const cy = (layer.y || 0) + (layer.height || 0) / 2;
+            const r = Math.min(layer.width || 0, layer.height || 0) / 2;
             return `  <circle cx="${cx}" cy="${cy}" r="${r}" fill="${layer.properties.fill || '#000'}" stroke="${layer.properties.stroke || 'none'}" stroke-width="${layer.properties.strokeWidth || 0}" ${commonAttrs} />`;
           
           case "text":
-            return `  <text x="${layer.x}" y="${layer.y + (layer.properties.fontSize || 16)}" font-family="${layer.properties.fontFamily || 'Arial'}" font-size="${layer.properties.fontSize || 16}" font-weight="${layer.properties.fontWeight || 'normal'}" fill="${layer.properties.fill || '#000'}" ${commonAttrs}>${layer.properties.text || ''}</text>`;
+            const text = layer.properties.text || '';
+            const escapedText = text.replace(/[<>&"']/g, (char) => {
+              switch (char) {
+                case '<': return '&lt;';
+                case '>': return '&gt;';
+                case '&': return '&amp;';
+                case '"': return '&quot;';
+                case "'": return '&#39;';
+                default: return char;
+              }
+            });
+            return `  <text x="${layer.x || 0}" y="${(layer.y || 0) + (layer.properties.fontSize || 16)}" font-family="${layer.properties.fontFamily || 'Arial'}" font-size="${layer.properties.fontSize || 16}" font-weight="${layer.properties.fontWeight || 'normal'}" fill="${layer.properties.fill || '#000'}" ${commonAttrs}>${escapedText}</text>`;
           
           default:
             return '';
         }
       })
+      .filter(element => element) // Remove empty elements
       .join('\n');
 
     const width = req.width || 800;

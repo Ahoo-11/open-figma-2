@@ -28,6 +28,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
+  const [previewLayer, setPreviewLayer] = useState<Layer | null>(null);
 
   useImperativeHandle(ref, () => canvasRef.current!);
 
@@ -66,11 +67,16 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         }
       });
 
+      // Draw preview layer while drawing
+      if (previewLayer) {
+        drawLayer(ctx, previewLayer, false);
+      }
+
       ctx.restore();
     } catch (error) {
       console.error("Error drawing canvas:", error);
     }
-  }, [canvasData, selectedLayerId]);
+  }, [canvasData, selectedLayerId, previewLayer]);
 
   useEffect(() => {
     draw();
@@ -247,6 +253,67 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
   };
 
+  const createPreviewLayer = (tool: Tool, startPos: { x: number; y: number }, currentPos: { x: number; y: number }): Layer => {
+    const width = Math.abs(currentPos.x - startPos.x);
+    const height = Math.abs(currentPos.y - startPos.y);
+    const x = Math.min(currentPos.x, startPos.x);
+    const y = Math.min(currentPos.y, startPos.y);
+
+    const baseLayer = {
+      id: "preview",
+      name: "Preview",
+      x,
+      y,
+      width,
+      height,
+      visible: true,
+      locked: false,
+      opacity: 0.7,
+    };
+
+    switch (tool) {
+      case "rectangle":
+        return {
+          ...baseLayer,
+          type: "rectangle" as const,
+          properties: {
+            fill: "#3B82F6",
+            stroke: "#1E40AF",
+            strokeWidth: 1,
+          },
+        };
+      case "circle":
+        return {
+          ...baseLayer,
+          type: "circle" as const,
+          properties: {
+            fill: "#EF4444",
+            stroke: "#DC2626",
+            strokeWidth: 1,
+          },
+        };
+      case "text":
+        return {
+          ...baseLayer,
+          type: "text" as const,
+          x: startPos.x,
+          y: startPos.y,
+          width: 100,
+          height: 24,
+          properties: {
+            text: "Text",
+            fontSize: 16,
+            fontFamily: "Arial",
+            fontWeight: "normal",
+            fill: "#000000",
+            textAlign: "left",
+          },
+        };
+      default:
+        return baseLayer as Layer;
+    }
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     try {
       const pos = getMousePosition(e);
@@ -272,6 +339,10 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       } else if (activeTool === "rectangle" || activeTool === "circle" || activeTool === "text") {
         setIsDrawing(true);
         setDrawStart(pos);
+        
+        // Create preview layer immediately
+        const preview = createPreviewLayer(activeTool, pos, pos);
+        setPreviewLayer(preview);
       }
     } catch (error) {
       console.error("Error handling mouse down:", error);
@@ -309,6 +380,10 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         }
         
         setDragStart(pos);
+      } else if (isDrawing && (activeTool === "rectangle" || activeTool === "circle" || activeTool === "text")) {
+        // Update preview layer while drawing
+        const preview = createPreviewLayer(activeTool, drawStart, pos);
+        setPreviewLayer(preview);
       }
 
       draw();
@@ -386,6 +461,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           }
         }
         setIsDrawing(false);
+        setPreviewLayer(null);
       }
 
       setIsDragging(false);

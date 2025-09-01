@@ -1,6 +1,6 @@
 import React from "react";
 import { Keyboard } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface KeyboardShortcutsProps {
   isOpen: boolean;
@@ -34,6 +34,9 @@ export function KeyboardShortcuts({ isOpen, onClose }: KeyboardShortcutsProps) {
             <Keyboard className="h-5 w-5" />
             <span>Keyboard Shortcuts</span>
           </DialogTitle>
+          <DialogDescription>
+            Use these keyboard shortcuts to speed up your workflow.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-3 max-h-96 overflow-y-auto">

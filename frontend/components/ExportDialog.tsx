@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Download, FileImage } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,7 +16,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ designFileId, designFileName, isOpen, onClose }: ExportDialogProps) {
-  const [format, setFormat] = useState<"svg" | "png">("svg");
+  const [format, setFormat] = useState<"svg" | "png" | "css">("svg");
   const [width, setWidth] = useState(800);
   const [height, setHeight] = useState(600);
   const [scale, setScale] = useState(1);
@@ -38,6 +38,18 @@ export function ExportDialog({ designFileId, designFileName, isOpen, onClose }: 
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+      } else if (format === "css") {
+        const response = await backend.design.exportCSS({ design_file_id: designFileId });
+        
+        const blob = new Blob([response.css], { type: 'text/css' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${designFileName}.css`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       } else {
         const response = await backend.design.exportPNG({ 
           design_file_id: designFileId,
@@ -55,19 +67,21 @@ export function ExportDialog({ designFileId, designFileName, isOpen, onClose }: 
         canvas.height = height * scale;
         
         img.onload = () => {
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          canvas.toBlob((blob) => {
-            if (blob) {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${designFileName}.png`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }
-          }, 'image/png');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${designFileName}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }
+            }, 'image/png');
+          }
         };
         
         const svgBlob = new Blob([response.svg_data], { type: 'image/svg+xml' });
@@ -101,18 +115,22 @@ export function ExportDialog({ designFileId, designFileName, isOpen, onClose }: 
             <FileImage className="h-5 w-5" />
             <span>Export Design</span>
           </DialogTitle>
+          <DialogDescription>
+            Export your design in different formats for sharing or development.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4">
           <div>
             <Label htmlFor="format">Format</Label>
-            <Select value={format} onValueChange={(value: "svg" | "png") => setFormat(value)}>
+            <Select value={format} onValueChange={(value: "svg" | "png" | "css") => setFormat(value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="svg">SVG (Vector)</SelectItem>
                 <SelectItem value="png">PNG (Raster)</SelectItem>
+                <SelectItem value="css">CSS (Code)</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -22,19 +22,28 @@ export const exportCSS = api<ExportCSSRequest, ExportCSSResponse>(
       throw APIError.notFound("Design file not found");
     }
 
-    const css = generateCSS(designFile.canvas_data.layers);
+    // Ensure canvas_data and layers exist
+    const canvasData = designFile.canvas_data || { layers: [] };
+    const layers = Array.isArray(canvasData.layers) ? canvasData.layers : [];
+
+    const css = generateCSS(layers);
     return { css };
   }
 );
 
 function generateCSS(layers: Layer[]): string {
+  if (!Array.isArray(layers)) {
+    layers = [];
+  }
+
   const cssRules = layers
-    .filter(layer => layer.visible)
+    .filter(layer => layer && layer.visible !== false)
     .map(layer => layerToCSS(layer))
+    .filter(rule => rule) // Remove empty rules
     .join('\n\n');
 
-  return `/* Generated CSS from OpenFigma */
-.openfigma-container {
+  return `/* Generated CSS from DesignStudio */
+.designstudio-container {
   position: relative;
   width: 800px;
   height: 600px;
@@ -44,15 +53,19 @@ ${cssRules}`;
 }
 
 function layerToCSS(layer: Layer): string {
-  const className = `openfigma-${layer.type}-${layer.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  if (!layer || !layer.properties) {
+    return '';
+  }
+
+  const className = `designstudio-${layer.type}-${layer.id.replace(/[^a-zA-Z0-9]/g, '')}`;
   
   let css = `.${className} {
   position: absolute;
-  left: ${layer.x}px;
-  top: ${layer.y}px;
-  width: ${layer.width}px;
-  height: ${layer.height}px;
-  opacity: ${layer.opacity};`;
+  left: ${layer.x || 0}px;
+  top: ${layer.y || 0}px;
+  width: ${layer.width || 0}px;
+  height: ${layer.height || 0}px;
+  opacity: ${layer.opacity || 1};`;
 
   switch (layer.type) {
     case "rectangle":

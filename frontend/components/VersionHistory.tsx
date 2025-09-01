@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Clock, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import backend from "~backend/client";
 import type { DesignVersion } from "~backend/design/types";
@@ -78,6 +78,9 @@ export function VersionHistory({ designFileId, isOpen, onClose, onVersionRestore
             <Clock className="h-5 w-5" />
             <span>Version History</span>
           </DialogTitle>
+          <DialogDescription>
+            View and restore previous versions of your design.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="max-h-96 overflow-y-auto space-y-2">
