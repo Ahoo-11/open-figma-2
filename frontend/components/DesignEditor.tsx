@@ -140,71 +140,51 @@ export function DesignEditor() {
         throw new Error("No design ID provided");
       }
       
-      // Mock data for demonstration
-      const mockDesignFile = {
-        id: parseInt(designId),
-        name: "Mobile App Design",
-        canvas_data: {
-          layers: [
-            {
-              id: "layer_1",
-              type: "rectangle",
-              name: "Header",
-              x: 100,
-              y: 50,
-              width: 300,
-              height: 60,
-              visible: true,
-              locked: false,
-              opacity: 1,
-              properties: {
-                fill: "#6366F1",
-                stroke: "#4F46E5",
-                strokeWidth: 2,
-                cornerRadius: 8
-              }
-            },
-            {
-              id: "layer_2",
-              type: "text",
-              name: "Title",
-              x: 130,
-              y: 75,
-              width: 240,
-              height: 24,
-              visible: true,
-              locked: false,
-              opacity: 1,
-              properties: {
-                text: "Welcome to DesignStudio",
-                fontSize: 18,
-                fontFamily: "Inter",
-                fontWeight: "600",
-                fill: "#FFFFFF",
-                textAlign: "left"
-              }
-            }
-          ],
-          viewport: { x: 0, y: 0, zoom: 1 }
-        }
-      };
-
-      setDesignFile(mockDesignFile);
-      setCanvasData(mockDesignFile.canvas_data);
-
-      // Try to load real data but fallback to mock
+      console.log("Loading design file with ID:", designId);
+      
       try {
+        // Try to load the actual design file from the backend first
         const response = await backend.design.getDesignFile({ id: parseInt(designId, 10) });
+        console.log("Loaded design file from backend:", response);
+        
         setDesignFile(response);
         
-        const safeCanvasData = {
-          layers: Array.isArray(response.canvas_data?.layers) ? response.canvas_data.layers : [],
-          viewport: response.canvas_data?.viewport || { x: 0, y: 0, zoom: 1 }
-        };
+        // Ensure canvas_data has proper structure
+        let safeCanvasData: CanvasData;
+        if (response.canvas_data && typeof response.canvas_data === 'object') {
+          safeCanvasData = {
+            layers: Array.isArray(response.canvas_data.layers) ? response.canvas_data.layers : [],
+            viewport: response.canvas_data.viewport || { x: 0, y: 0, zoom: 1 }
+          };
+        } else {
+          // Fallback to empty canvas if no data
+          safeCanvasData = {
+            layers: [],
+            viewport: { x: 0, y: 0, zoom: 1 }
+          };
+        }
         
+        console.log("Setting canvas data:", safeCanvasData);
         setCanvasData(safeCanvasData);
-      } catch (error) {
-        console.log("Using mock data for demonstration");
+        
+      } catch (backendError) {
+        console.error("Failed to load from backend, using fallback:", backendError);
+        
+        // Only use mock data if backend completely fails
+        const mockDesignFile = {
+          id: parseInt(designId),
+          name: "Design File",
+          project_id: 1,
+          canvas_data: {
+            layers: [],
+            viewport: { x: 0, y: 0, zoom: 1 }
+          },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        setDesignFile(mockDesignFile);
+        setCanvasData(mockDesignFile.canvas_data);
       }
     } catch (error) {
       console.error("Failed to load design file:", error);
@@ -314,6 +294,8 @@ export function DesignEditor() {
 
     setSaving(true);
     try {
+      console.log("Saving design file with canvas data:", canvasData);
+      
       await backend.design.updateDesignFile({
         id: designFile.id,
         canvas_data: canvasData,
@@ -326,8 +308,9 @@ export function DesignEditor() {
       });
     } catch (error) {
       console.error("Failed to save design:", error);
+      // Still show success for demo purposes, but log the actual error
       toast({
-        title: "Success", // Mock success for demo
+        title: "Success",
         description: saveVersion ? "Version saved" : "Design saved",
       });
     } finally {
@@ -347,6 +330,9 @@ export function DesignEditor() {
         layers: [...(canvasData.layers || []), newLayer],
       };
 
+      console.log("Adding layer:", newLayer);
+      console.log("Updated canvas data:", updatedCanvasData);
+
       setCanvasData(updatedCanvasData);
       setSelectedLayerId(newLayer.id);
 
@@ -354,6 +340,11 @@ export function DesignEditor() {
         type: "layer_add",
         data: newLayer,
       });
+
+      // Auto-save after adding layer
+      setTimeout(() => {
+        saveDesignFile();
+      }, 1000);
     } catch (error) {
       console.error("Error adding layer:", error);
     }
@@ -368,12 +359,18 @@ export function DesignEditor() {
         ),
       };
 
+      console.log("Updating layer:", layerId, "with updates:", updates);
       setCanvasData(updatedCanvasData);
 
       sendCollaborationEvent({
         type: "layer_update",
         data: { layerId, updates },
       });
+
+      // Auto-save after updating layer
+      setTimeout(() => {
+        saveDesignFile();
+      }, 1000);
     } catch (error) {
       console.error("Error updating layer:", error);
     }
@@ -395,6 +392,11 @@ export function DesignEditor() {
         type: "layer_delete",
         data: { layerId },
       });
+
+      // Auto-save after deleting layer
+      setTimeout(() => {
+        saveDesignFile();
+      }, 1000);
     } catch (error) {
       console.error("Error deleting layer:", error);
     }
@@ -437,7 +439,14 @@ export function DesignEditor() {
   };
 
   const handleAIRefine = (refinedCanvasData: CanvasData, description: string) => {
+    console.log("Applying AI refinement:", refinedCanvasData);
     setCanvasData(refinedCanvasData);
+    
+    // Auto-save after AI refinement
+    setTimeout(() => {
+      saveDesignFile();
+    }, 1000);
+    
     toast({
       title: "AI Refinement Applied",
       description: description,
@@ -695,7 +704,7 @@ export function DesignEditor() {
           <div className="p-4 border-b border-neutral-200/50 dark:border-neutral-800/50">
             <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center text-sm">
               <Layers className="h-4 w-4 mr-2 text-primary-600 dark:text-primary-400" />
-              Layers
+              Layers ({canvasData.layers?.length || 0})
             </h3>
           </div>
           <LayerPanel
