@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { CreateFileDialog } from "./CreateFileDialog";
 import backend from "~backend/client";
 import type { Project, DesignFile } from "~backend/design/types";
 
@@ -36,7 +37,6 @@ export function ProjectList() {
   const [createFileOpen, setCreateFileOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [newProject, setNewProject] = useState({ name: "", description: "" });
-  const [newFileName, setNewFileName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const { toast } = useToast();
@@ -148,32 +148,12 @@ export function ProjectList() {
     }
   };
 
-  const handleCreateDesignFile = async () => {
-    if (!newFileName.trim() || !selectedProjectId) return;
-
-    try {
-      await backend.design.createDesignFile({
-        project_id: selectedProjectId,
-        name: newFileName,
-      });
-      
-      setNewFileName("");
-      setCreateFileOpen(false);
-      setSelectedProjectId(null);
-      loadProjects();
-      
-      toast({
-        title: "Success",
-        description: "Design file created successfully",
-      });
-    } catch (error) {
-      console.error("Failed to create design file:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create design file",
-        variant: "destructive",
-      });
-    }
+  const handleFileCreated = (fileId: number) => {
+    setCreateFileOpen(false);
+    setSelectedProjectId(null);
+    loadProjects();
+    // Navigate to the new file
+    window.location.href = `/design/${fileId}`;
   };
 
   const handleDuplicateFile = async (fileId: number, fileName: string) => {
@@ -270,7 +250,7 @@ export function ProjectList() {
               Your Creative Workspace
             </h1>
             <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
-              Design, collaborate, and create amazing experiences with professional tools
+              Design, collaborate, and create amazing experiences with professional tools and AI assistance
             </p>
           </div>
 
@@ -372,7 +352,7 @@ export function ProjectList() {
             </div>
             <h3 className="text-2xl font-semibold text-neutral-900 dark:text-white mb-3">Start Your Creative Journey</h3>
             <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8 max-w-md mx-auto">
-              Create your first project and begin designing amazing experiences
+              Create your first project and begin designing amazing experiences with AI assistance
             </p>
             <Button 
               onClick={() => setCreateProjectOpen(true)}
@@ -505,7 +485,7 @@ export function ProjectList() {
                   ) : (
                     <div className="text-center py-8 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
                       <FileText className="h-8 w-8 mx-auto mb-2 text-neutral-400" />
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">No design files yet</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">No design files yet</p>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -513,10 +493,12 @@ export function ProjectList() {
                           setSelectedProjectId(project.id);
                           setCreateFileOpen(true);
                         }}
-                        className="mt-2 text-primary-600 hover:text-primary-700"
+                        className="text-primary-600 hover:text-primary-700 group/button"
                       >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Create first file
+                        <div className="flex items-center space-x-1">
+                          <Sparkles className="h-4 w-4 group-hover/button:rotate-12 transition-transform" />
+                          <span>Create with AI</span>
+                        </div>
                       </Button>
                     </div>
                   )}
@@ -527,36 +509,14 @@ export function ProjectList() {
         )}
 
         {/* Create File Dialog */}
-        <Dialog open={createFileOpen} onOpenChange={setCreateFileOpen}>
-          <DialogContent className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">Create New Design File</DialogTitle>
-              <DialogDescription className="text-neutral-600 dark:text-neutral-400">
-                Add a new design file to this project.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="fileName" className="text-sm font-medium">File Name</Label>
-                <Input
-                  id="fileName"
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  placeholder="Enter file name"
-                  className="bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateFileOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreateDesignFile} className="gradient-primary text-white">
-                Create File
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {selectedProjectId && (
+          <CreateFileDialog
+            isOpen={createFileOpen}
+            onClose={() => setCreateFileOpen(false)}
+            projectId={selectedProjectId}
+            onFileCreated={handleFileCreated}
+          />
+        )}
       </div>
     </div>
   );

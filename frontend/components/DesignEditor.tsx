@@ -30,7 +30,8 @@ import {
   EyeOff,
   Lock,
   Unlock,
-  Move3D
+  Move3D,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -43,6 +44,7 @@ import { VersionHistory } from "./VersionHistory";
 import { ExportDialog } from "./ExportDialog";
 import { CommentsPanel } from "./CommentsPanel";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
+import { AIRefineDialog } from "./AIRefineDialog";
 import backend from "~backend/client";
 import type { DesignFile, Layer, CanvasData, CollaborationEvent, CursorPosition } from "~backend/design/types";
 
@@ -61,6 +63,7 @@ export function DesignEditor() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [showAIRefine, setShowAIRefine] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -433,6 +436,14 @@ export function DesignEditor() {
     }
   };
 
+  const handleAIRefine = (refinedCanvasData: CanvasData, description: string) => {
+    setCanvasData(refinedCanvasData);
+    toast({
+      title: "AI Refinement Applied",
+      description: description,
+    });
+  };
+
   const selectedLayer = selectedLayerId && canvasData.layers ? 
     canvasData.layers.find(l => l.id === selectedLayerId) : null;
 
@@ -562,6 +573,21 @@ export function DesignEditor() {
                 title="Text (T)"
               >
                 <Type className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
+
+            {/* AI Tools */}
+            <div className="flex items-center space-x-1 px-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAIRefine(true)}
+                className="hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                title="AI Refine"
+              >
+                <Sparkles className="h-4 w-4" />
               </Button>
             </div>
 
@@ -755,6 +781,14 @@ export function DesignEditor() {
             designFileId={parseInt(designId)}
             isOpen={showComments}
             onClose={() => setShowComments(false)}
+          />
+
+          <AIRefineDialog
+            isOpen={showAIRefine}
+            onClose={() => setShowAIRefine(false)}
+            onDesignRefined={handleAIRefine}
+            currentCanvasData={canvasData}
+            selectedLayerId={selectedLayerId}
           />
         </>
       )}

@@ -33,6 +33,7 @@ const BROWSER = typeof globalThis === "object" && ("window" in globalThis);
  * Client is an API client for the  Encore application.
  */
 export class Client {
+    public readonly ai: ai.ServiceClient
     public readonly collaboration: collaboration.ServiceClient
     public readonly design: design.ServiceClient
     private readonly options: ClientOptions
@@ -49,6 +50,7 @@ export class Client {
         this.target = target
         this.options = options ?? {}
         const base = new BaseClient(this.target, this.options)
+        this.ai = new ai.ServiceClient(base)
         this.collaboration = new collaboration.ServiceClient(base)
         this.design = new design.ServiceClient(base)
     }
@@ -79,6 +81,43 @@ export interface ClientOptions {
 
     /** Default RequestInit to be used for the client */
     requestInit?: Omit<RequestInit, "headers"> & { headers?: Record<string, string> }
+}
+
+/**
+ * Import the endpoint handlers to derive the types for the client.
+ */
+import { generateDesign as api_ai_generate_design_generateDesign } from "~backend/ai/generate_design";
+import { refineDesign as api_ai_refine_design_refineDesign } from "~backend/ai/refine_design";
+
+export namespace ai {
+
+    export class ServiceClient {
+        private baseClient: BaseClient
+
+        constructor(baseClient: BaseClient) {
+            this.baseClient = baseClient
+            this.generateDesign = this.generateDesign.bind(this)
+            this.refineDesign = this.refineDesign.bind(this)
+        }
+
+        /**
+         * Generates a design using AI based on user prompt and preferences.
+         */
+        public async generateDesign(params: RequestType<typeof api_ai_generate_design_generateDesign>): Promise<ResponseType<typeof api_ai_generate_design_generateDesign>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/generate-design`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_ai_generate_design_generateDesign>
+        }
+
+        /**
+         * Refines an existing design using AI based on user feedback.
+         */
+        public async refineDesign(params: RequestType<typeof api_ai_refine_design_refineDesign>): Promise<ResponseType<typeof api_ai_refine_design_refineDesign>> {
+            // Now make the actual call to the API
+            const resp = await this.baseClient.callTypedAPI(`/refine-design`, {method: "POST", body: JSON.stringify(params)})
+            return JSON.parse(await resp.text(), dateReviver) as ResponseType<typeof api_ai_refine_design_refineDesign>
+        }
+    }
 }
 
 /**
