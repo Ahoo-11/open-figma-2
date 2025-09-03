@@ -58,27 +58,15 @@ export function CreateFileDialog({ isOpen, onClose, projectId, onFileCreated }: 
   };
 
   const handleAIDesignGenerated = async (canvasData: any, description: string) => {
-    const finalFileName = fileName.trim() || description.slice(0, 30) || "AI Generated Design";
+    const finalFileName = fileName.trim() || description.slice(0, 50) || "AI Generated Design";
 
     setCreating(true);
     try {
-      console.log("Creating AI design file with canvas data:", canvasData);
-      
-      // First create the design file
       const response = await backend.design.createDesignFile({
         project_id: projectId,
         name: finalFileName,
-      });
-
-      console.log("Design file created with ID:", response.design_file.id);
-
-      // Then immediately update it with AI-generated content
-      await backend.design.updateDesignFile({
-        id: response.design_file.id,
         canvas_data: canvasData,
       });
-
-      console.log("Design file updated with AI content");
 
       toast({
         title: "Success",
@@ -124,7 +112,7 @@ export function CreateFileDialog({ isOpen, onClose, projectId, onFileCreated }: 
                 id="fileName"
                 value={fileName}
                 onChange={(e) => setFileName(e.target.value)}
-                placeholder="Enter file name (optional for AI-generated)"
+                placeholder="Enter file name (optional for AI)"
                 className="bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700"
               />
             </div>

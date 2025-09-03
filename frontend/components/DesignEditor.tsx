@@ -134,64 +134,44 @@ export function DesignEditor() {
   }, [selectedLayerId]);
 
   const loadDesignFile = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setError(null);
       if (!designId) {
         throw new Error("No design ID provided");
       }
       
-      console.log("Loading design file with ID:", designId);
+      const response = await backend.design.getDesignFile({ id: parseInt(designId, 10) });
+      setDesignFile(response);
       
-      try {
-        // Try to load the actual design file from the backend first
-        const response = await backend.design.getDesignFile({ id: parseInt(designId, 10) });
-        console.log("Loaded design file from backend:", response);
-        
-        setDesignFile(response);
-        
-        // Ensure canvas_data has proper structure
-        let safeCanvasData: CanvasData;
-        if (response.canvas_data && typeof response.canvas_data === 'object') {
-          safeCanvasData = {
-            layers: Array.isArray(response.canvas_data.layers) ? response.canvas_data.layers : [],
-            viewport: response.canvas_data.viewport || { x: 0, y: 0, zoom: 1 }
-          };
-        } else {
-          // Fallback to empty canvas if no data
-          safeCanvasData = {
-            layers: [],
-            viewport: { x: 0, y: 0, zoom: 1 }
-          };
+      let parsedCanvasData = response.canvas_data;
+      if (typeof parsedCanvasData === 'string') {
+        try {
+          parsedCanvasData = JSON.parse(parsedCanvasData);
+        } catch (e) {
+          console.error("Failed to parse canvas_data JSON string:", e);
+          parsedCanvasData = null;
         }
-        
-        console.log("Setting canvas data:", safeCanvasData);
-        setCanvasData(safeCanvasData);
-        
-      } catch (backendError) {
-        console.error("Failed to load from backend, using fallback:", backendError);
-        
-        // Only use mock data if backend completely fails
-        const mockDesignFile = {
-          id: parseInt(designId),
-          name: "Design File",
-          project_id: 1,
-          canvas_data: {
-            layers: [],
-            viewport: { x: 0, y: 0, zoom: 1 }
-          },
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        setDesignFile(mockDesignFile);
-        setCanvasData(mockDesignFile.canvas_data);
       }
+
+      let safeCanvasData: CanvasData;
+      if (parsedCanvasData && typeof parsedCanvasData === 'object' && 'layers' in parsedCanvasData) {
+        safeCanvasData = {
+          layers: Array.isArray(parsedCanvasData.layers) ? parsedCanvasData.layers : [],
+          viewport: parsedCanvasData.viewport || { x: 0, y: 0, zoom: 1 }
+        };
+      } else {
+        safeCanvasData = { layers: [], viewport: { x: 0, y: 0, zoom: 1 } };
+      }
+      
+      setCanvasData(safeCanvasData);
+      
     } catch (error) {
       console.error("Failed to load design file:", error);
-      setError("Failed to load design file");
+      setError("Failed to load design file. It may not exist or there was a network error.");
       toast({
         title: "Error",
-        description: "Failed to load design file",
+        description: "Failed to load design file.",
         variant: "destructive",
       });
     } finally {
@@ -294,8 +274,6 @@ export function DesignEditor() {
 
     setSaving(true);
     try {
-      console.log("Saving design file with canvas data:", canvasData);
-      
       await backend.design.updateDesignFile({
         id: designFile.id,
         canvas_data: canvasData,
@@ -308,10 +286,10 @@ export function DesignEditor() {
       });
     } catch (error) {
       console.error("Failed to save design:", error);
-      // Still show success for demo purposes, but log the actual error
       toast({
-        title: "Success",
-        description: saveVersion ? "Version saved" : "Design saved",
+        title: "Error",
+        description: "Failed to save design",
+        variant: "destructive",
       });
     } finally {
       setSaving(false);
@@ -330,9 +308,6 @@ export function DesignEditor() {
         layers: [...(canvasData.layers || []), newLayer],
       };
 
-      console.log("Adding layer:", newLayer);
-      console.log("Updated canvas data:", updatedCanvasData);
-
       setCanvasData(updatedCanvasData);
       setSelectedLayerId(newLayer.id);
 
@@ -340,11 +315,6 @@ export function DesignEditor() {
         type: "layer_add",
         data: newLayer,
       });
-
-      // Auto-save after adding layer
-      setTimeout(() => {
-        saveDesignFile();
-      }, 1000);
     } catch (error) {
       console.error("Error adding layer:", error);
     }
@@ -359,18 +329,12 @@ export function DesignEditor() {
         ),
       };
 
-      console.log("Updating layer:", layerId, "with updates:", updates);
       setCanvasData(updatedCanvasData);
 
       sendCollaborationEvent({
         type: "layer_update",
         data: { layerId, updates },
       });
-
-      // Auto-save after updating layer
-      setTimeout(() => {
-        saveDesignFile();
-      }, 1000);
     } catch (error) {
       console.error("Error updating layer:", error);
     }
@@ -392,11 +356,6 @@ export function DesignEditor() {
         type: "layer_delete",
         data: { layerId },
       });
-
-      // Auto-save after deleting layer
-      setTimeout(() => {
-        saveDesignFile();
-      }, 1000);
     } catch (error) {
       console.error("Error deleting layer:", error);
     }
@@ -432,21 +391,15 @@ export function DesignEditor() {
     } catch (error) {
       console.error("Failed to duplicate file:", error);
       toast({
-        title: "Success", // Mock success for demo
-        description: "Design file duplicated",
+        title: "Error",
+        description: "Failed to duplicate file",
+        variant: "destructive",
       });
     }
   };
 
   const handleAIRefine = (refinedCanvasData: CanvasData, description: string) => {
-    console.log("Applying AI refinement:", refinedCanvasData);
     setCanvasData(refinedCanvasData);
-    
-    // Auto-save after AI refinement
-    setTimeout(() => {
-      saveDesignFile();
-    }, 1000);
-    
     toast({
       title: "AI Refinement Applied",
       description: description,

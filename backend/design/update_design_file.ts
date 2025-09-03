@@ -16,7 +16,8 @@ export interface UpdateDesignFileResponse {
 export const updateDesignFile = api<UpdateDesignFileRequest, UpdateDesignFileResponse>(
   { expose: true, method: "PUT", path: "/design-files/:id" },
   async (req) => {
-    await designDB.begin().then(async (tx) => {
+    const tx = await designDB.begin();
+    try {
       // Update the design file
       const designFile = await tx.queryRow<DesignFile>`
         UPDATE design_files
@@ -47,15 +48,10 @@ export const updateDesignFile = api<UpdateDesignFileRequest, UpdateDesignFileRes
       }
 
       await tx.commit();
-      return designFile;
-    });
-
-    const updatedFile = await designDB.queryRow<DesignFile>`
-      SELECT id, project_id, name, canvas_data, created_at, updated_at
-      FROM design_files
-      WHERE id = ${req.id}
-    `;
-
-    return { design_file: updatedFile! };
+      return { design_file: designFile };
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
   }
 );
