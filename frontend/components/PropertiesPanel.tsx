@@ -3,6 +3,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Layer } from "~backend/design/types";
 
 interface PropertiesPanelProps {
@@ -115,10 +117,38 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             {Math.round(safeValue(selectedLayer.opacity, 1) * 100)}%
           </div>
         </div>
+
+        {selectedLayer.rotation !== undefined && (
+          <div>
+            <Label htmlFor="rotation">Rotation</Label>
+            <div className="mt-2">
+              <Slider
+                value={[safeValue(selectedLayer.rotation, 0)]}
+                onValueChange={([value]) => updateBasicProperty("rotation", value)}
+                min={-180}
+                max={180}
+                step={1}
+              />
+            </div>
+            <div className="text-sm text-gray-500 mt-1">
+              {Math.round(safeValue(selectedLayer.rotation, 0))}°
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Group Properties */}
+      {selectedLayer.type === "group" && (
+        <div className="space-y-3">
+          <h4 className="font-medium text-gray-900 dark:text-white">Group</h4>
+          <p className="text-sm text-gray-500">
+            This layer contains {selectedLayer.properties?.children?.length || 0} child elements.
+          </p>
+        </div>
+      )}
+
       {/* Type-specific Properties */}
-      {(selectedLayer.type === "rectangle" || selectedLayer.type === "circle") && (
+      {(selectedLayer.type === "rectangle" || selectedLayer.type === "circle" || selectedLayer.type === "container") && (
         <div className="space-y-3">
           <h4 className="font-medium text-gray-900 dark:text-white">Fill & Stroke</h4>
           
@@ -153,7 +183,7 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
             />
           </div>
 
-          {selectedLayer.type === "rectangle" && (
+          {(selectedLayer.type === "rectangle" || selectedLayer.type === "container") && (
             <div>
               <Label htmlFor="cornerRadius">Corner Radius</Label>
               <Input
@@ -168,28 +198,44 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
         </div>
       )}
 
-      {selectedLayer.type === "text" && (
+      {/* Text Container Properties */}
+      {(selectedLayer.type === "text" || selectedLayer.type === "container") && (
         <div className="space-y-3">
-          <h4 className="font-medium text-gray-900 dark:text-white">Typography</h4>
+          <h4 className="font-medium text-gray-900 dark:text-white">Text Content</h4>
           
           <div>
             <Label htmlFor="text">Text</Label>
-            <Input
+            <Textarea
               id="text"
               value={safeValue(selectedLayer.properties?.text, "")}
               onChange={(e) => updateProperty("text", e.target.value)}
+              rows={3}
+              className="resize-none"
             />
           </div>
 
-          <div>
-            <Label htmlFor="fontSize">Font Size</Label>
-            <Input
-              id="fontSize"
-              type="number"
-              min="8"
-              value={safeValue(selectedLayer.properties?.fontSize, 16)}
-              onChange={(e) => updateProperty("fontSize", parseFloat(e.target.value) || 16)}
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label htmlFor="fontSize">Font Size</Label>
+              <Input
+                id="fontSize"
+                type="number"
+                min="8"
+                value={safeValue(selectedLayer.properties?.fontSize, 16)}
+                onChange={(e) => updateProperty("fontSize", parseFloat(e.target.value) || 16)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="lineHeight">Line Height</Label>
+              <Input
+                id="lineHeight"
+                type="number"
+                min="1"
+                step="0.1"
+                value={safeValue(selectedLayer.properties?.lineHeight, 1.4)}
+                onChange={(e) => updateProperty("lineHeight", parseFloat(e.target.value) || 1.4)}
+              />
+            </div>
           </div>
 
           <div>
@@ -207,40 +253,60 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
                 <SelectItem value="Times New Roman">Times New Roman</SelectItem>
                 <SelectItem value="Georgia">Georgia</SelectItem>
                 <SelectItem value="Verdana">Verdana</SelectItem>
+                <SelectItem value="Inter">Inter</SelectItem>
+                <SelectItem value="Roboto">Roboto</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label htmlFor="fontWeight">Font Weight</Label>
+              <Select
+                value={safeValue(selectedLayer.properties?.fontWeight, "normal")}
+                onValueChange={(value) => updateProperty("fontWeight", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="bold">Bold</SelectItem>
+                  <SelectItem value="lighter">Lighter</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="textAlign">Text Align</Label>
+              <Select
+                value={safeValue(selectedLayer.properties?.textAlign, "left")}
+                onValueChange={(value) => updateProperty("textAlign", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="left">Left</SelectItem>
+                  <SelectItem value="center">Center</SelectItem>
+                  <SelectItem value="right">Right</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div>
-            <Label htmlFor="fontWeight">Font Weight</Label>
+            <Label htmlFor="verticalAlign">Vertical Align</Label>
             <Select
-              value={safeValue(selectedLayer.properties?.fontWeight, "normal")}
-              onValueChange={(value) => updateProperty("fontWeight", value)}
+              value={safeValue(selectedLayer.properties?.verticalAlign, "top")}
+              onValueChange={(value) => updateProperty("verticalAlign", value)}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="bold">Bold</SelectItem>
-                <SelectItem value="lighter">Lighter</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="textAlign">Text Align</Label>
-            <Select
-              value={safeValue(selectedLayer.properties?.textAlign, "left")}
-              onValueChange={(value) => updateProperty("textAlign", value)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="left">Left</SelectItem>
-                <SelectItem value="center">Center</SelectItem>
-                <SelectItem value="right">Right</SelectItem>
+                <SelectItem value="top">Top</SelectItem>
+                <SelectItem value="middle">Middle</SelectItem>
+                <SelectItem value="bottom">Bottom</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -253,6 +319,43 @@ export function PropertiesPanel({ selectedLayer, onLayerUpdate }: PropertiesPane
               value={safeValue(selectedLayer.properties?.fill, "#000000")}
               onChange={(e) => updateProperty("fill", e.target.value)}
             />
+          </div>
+
+          <div>
+            <Label htmlFor="padding">Padding</Label>
+            <Input
+              id="padding"
+              type="number"
+              min="0"
+              value={safeValue(selectedLayer.properties?.padding, 8)}
+              onChange={(e) => updateProperty("padding", parseFloat(e.target.value) || 0)}
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="wordWrap"
+              checked={safeValue(selectedLayer.properties?.wordWrap, true)}
+              onCheckedChange={(checked) => updateProperty("wordWrap", checked)}
+            />
+            <Label htmlFor="wordWrap" className="text-sm">Word Wrap</Label>
+          </div>
+
+          <div>
+            <Label htmlFor="overflow">Overflow</Label>
+            <Select
+              value={safeValue(selectedLayer.properties?.overflow, "hidden")}
+              onValueChange={(value) => updateProperty("overflow", value)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="visible">Visible</SelectItem>
+                <SelectItem value="hidden">Hidden</SelectItem>
+                <SelectItem value="auto">Auto</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}

@@ -10,6 +10,8 @@ interface CanvasProps {
   onLayerAdd: (layer: Omit<Layer, "id">) => void;
   onLayerUpdate: (layerId: string, updates: Partial<Layer>) => void;
   onViewportChange: (viewport: { x: number; y: number; zoom: number }) => void;
+  onGroupLayers?: (layerIds: string[]) => void;
+  onUngroupLayer?: (groupId: string) => void;
 }
 
 export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
@@ -20,6 +22,8 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   onLayerAdd,
   onLayerUpdate,
   onViewportChange,
+  onGroupLayers,
+  onUngroupLayer,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -60,10 +64,11 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       // Draw grid
       drawGrid(ctx, rect.width, rect.height, viewport);
 
-      // Draw layers
-      layers.forEach(layer => {
+      // Draw layers (only root level layers, children will be drawn recursively)
+      const rootLayers = layers.filter(layer => !layer.parentId);
+      rootLayers.forEach(layer => {
         if (layer && layer.visible !== false) {
-          drawLayer(ctx, layer, layer.id === selectedLayerId);
+          drawLayerRecursive(ctx, layer, layers, layer.id === selectedLayerId);
         }
       });
 
@@ -120,6 +125,60 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
   };
 
+  const drawLayerRecursive = (ctx: CanvasRenderingContext2D, layer: Layer, allLayers: Layer[], isSelected: boolean) => {
+    try {
+      if (!layer || layer.visible === false) return;
+
+      ctx.save();
+
+      // Apply layer transformations
+      const centerX = layer.x + layer.width / 2;
+      const centerY = layer.y + layer.height / 2;
+      
+      if (layer.rotation) {
+        ctx.translate(centerX, centerY);
+        ctx.rotate((layer.rotation * Math.PI) / 180);
+        ctx.translate(-centerX, -centerY);
+      }
+
+      // Draw the layer itself
+      if (layer.type !== "group") {
+        drawLayer(ctx, layer, isSelected);
+      } else {
+        // For groups, just draw selection outline if selected
+        if (isSelected) {
+          drawSelectionOutline(ctx, layer);
+        }
+      }
+
+      // Draw children if this is a group or container
+      if (layer.properties?.children && Array.isArray(layer.properties.children)) {
+        layer.properties.children.forEach(childId => {
+          const childLayer = allLayers.find(l => l.id === childId);
+          if (childLayer) {
+            ctx.save();
+            // Translate child coordinates relative to parent
+            ctx.translate(layer.x, layer.y);
+            
+            // Create adjusted child layer with relative coordinates
+            const adjustedChild = {
+              ...childLayer,
+              x: childLayer.x - layer.x,
+              y: childLayer.y - layer.y
+            };
+            
+            drawLayerRecursive(ctx, adjustedChild, allLayers, childLayer.id === selectedLayerId);
+            ctx.restore();
+          }
+        });
+      }
+
+      ctx.restore();
+    } catch (error) {
+      console.error("Error drawing layer recursively:", error);
+    }
+  };
+
   const drawLayer = (ctx: CanvasRenderingContext2D, layer: Layer, isSelected: boolean) => {
     try {
       if (!layer || !layer.properties) return;
@@ -129,6 +188,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
 
       switch (layer.type) {
         case "rectangle":
+        case "container":
           ctx.fillStyle = layer.properties.fill || "#000000";
           if (layer.properties.cornerRadius) {
             drawRoundedRect(ctx, layer.x, layer.y, layer.width, layer.height, layer.properties.cornerRadius);
@@ -145,6 +205,11 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             } else {
               ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
             }
+          }
+
+          // Draw text content for containers and text layers
+          if ((layer.type === "container" || layer.type === "text") && layer.properties.text) {
+            drawTextInContainer(ctx, layer);
           }
           break;
 
@@ -166,26 +231,121 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           break;
 
         case "text":
-          ctx.fillStyle = layer.properties.fill || "#000000";
-          ctx.font = `${layer.properties.fontWeight || "normal"} ${layer.properties.fontSize || 16}px ${layer.properties.fontFamily || "Arial"}`;
-          ctx.textAlign = (layer.properties.textAlign as CanvasTextAlign) || "left";
-          ctx.fillText(layer.properties.text || "", layer.x, layer.y + (layer.properties.fontSize || 16));
+          drawTextInContainer(ctx, layer);
           break;
       }
 
       // Draw selection outline
       if (isSelected) {
-        const viewport = canvasData?.viewport || { x: 0, y: 0, zoom: 1 };
-        ctx.strokeStyle = "#007AFF";
-        ctx.lineWidth = 2 / viewport.zoom;
-        ctx.setLineDash([5 / viewport.zoom, 5 / viewport.zoom]);
-        ctx.strokeRect(layer.x - 2 / viewport.zoom, layer.y - 2 / viewport.zoom, layer.width + 4 / viewport.zoom, layer.height + 4 / viewport.zoom);
-        ctx.setLineDash([]);
+        drawSelectionOutline(ctx, layer);
       }
 
       ctx.restore();
     } catch (error) {
       console.error("Error drawing layer:", error);
+    }
+  };
+
+  const drawTextInContainer = (ctx: CanvasRenderingContext2D, layer: Layer) => {
+    try {
+      if (!layer.properties?.text) return;
+
+      const padding = layer.properties.padding || 0;
+      const fontSize = layer.properties.fontSize || 16;
+      const fontFamily = layer.properties.fontFamily || "Arial";
+      const fontWeight = layer.properties.fontWeight || "normal";
+      const lineHeight = layer.properties.lineHeight || 1.4;
+      const textAlign = layer.properties.textAlign || "left";
+      const verticalAlign = layer.properties.verticalAlign || "top";
+      
+      ctx.fillStyle = layer.properties.fill || "#000000";
+      ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+      
+      const containerWidth = layer.width - (padding * 2);
+      const containerHeight = layer.height - (padding * 2);
+      
+      if (layer.properties.wordWrap) {
+        // Word wrap text within container
+        const words = layer.properties.text.split(' ');
+        const lines: string[] = [];
+        let currentLine = '';
+        
+        words.forEach(word => {
+          const testLine = currentLine + (currentLine ? ' ' : '') + word;
+          const metrics = ctx.measureText(testLine);
+          
+          if (metrics.width > containerWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        });
+        
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+        
+        // Calculate vertical positioning
+        const lineSpacing = fontSize * lineHeight;
+        const totalTextHeight = lines.length * lineSpacing;
+        let startY = layer.y + padding + fontSize;
+        
+        switch (verticalAlign) {
+          case "middle":
+            startY = layer.y + (layer.height - totalTextHeight) / 2 + fontSize;
+            break;
+          case "bottom":
+            startY = layer.y + layer.height - totalTextHeight - padding + fontSize;
+            break;
+        }
+        
+        // Draw each line
+        lines.forEach((line, index) => {
+          const y = startY + (index * lineSpacing);
+          
+          // Only draw if within container bounds
+          if (y >= layer.y + padding && y <= layer.y + layer.height - padding) {
+            let x = layer.x + padding;
+            
+            if (textAlign === "center") {
+              x = layer.x + layer.width / 2;
+              ctx.textAlign = "center";
+            } else if (textAlign === "right") {
+              x = layer.x + layer.width - padding;
+              ctx.textAlign = "right";
+            } else {
+              ctx.textAlign = "left";
+            }
+            
+            ctx.fillText(line, x, y);
+          }
+        });
+      } else {
+        // Single line text (original behavior)
+        ctx.textAlign = (textAlign as CanvasTextAlign) || "left";
+        ctx.fillText(layer.properties.text, layer.x + padding, layer.y + fontSize + padding);
+      }
+    } catch (error) {
+      console.error("Error drawing text in container:", error);
+    }
+  };
+
+  const drawSelectionOutline = (ctx: CanvasRenderingContext2D, layer: Layer) => {
+    try {
+      const viewport = canvasData?.viewport || { x: 0, y: 0, zoom: 1 };
+      ctx.strokeStyle = "#007AFF";
+      ctx.lineWidth = 2 / viewport.zoom;
+      ctx.setLineDash([5 / viewport.zoom, 5 / viewport.zoom]);
+      ctx.strokeRect(
+        layer.x - 2 / viewport.zoom, 
+        layer.y - 2 / viewport.zoom, 
+        layer.width + 4 / viewport.zoom, 
+        layer.height + 4 / viewport.zoom
+      );
+      ctx.setLineDash([]);
+    } catch (error) {
+      console.error("Error drawing selection outline:", error);
     }
   };
 
@@ -226,22 +386,26 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     try {
       const layers = canvasData?.layers || [];
       
-      // Check layers in reverse order (top to bottom)
-      for (let i = layers.length - 1; i >= 0; i--) {
-        const layer = layers[i];
+      // Check layers in reverse order (top to bottom), including children
+      const flattenedLayers = flattenLayers(layers).reverse();
+      
+      for (const layer of flattenedLayers) {
         if (!layer || layer.visible === false || layer.locked) continue;
 
+        // Get absolute position for child layers
+        const absolutePos = getAbsolutePosition(layer, layers);
+        
         if (layer.type === "circle") {
-          const centerX = layer.x + layer.width / 2;
-          const centerY = layer.y + layer.height / 2;
+          const centerX = absolutePos.x + layer.width / 2;
+          const centerY = absolutePos.y + layer.height / 2;
           const radius = Math.min(layer.width, layer.height) / 2;
           const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
           if (distance <= radius) {
             return layer;
           }
         } else {
-          if (x >= layer.x && x <= layer.x + layer.width &&
-              y >= layer.y && y <= layer.y + layer.height) {
+          if (x >= absolutePos.x && x <= absolutePos.x + layer.width &&
+              y >= absolutePos.y && y <= absolutePos.y + layer.height) {
             return layer;
           }
         }
@@ -251,6 +415,39 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       console.error("Error getting layer at position:", error);
       return null;
     }
+  };
+
+  const flattenLayers = (layers: Layer[]): Layer[] => {
+    const result: Layer[] = [];
+    
+    layers.forEach(layer => {
+      result.push(layer);
+      if (layer.properties?.children) {
+        const childLayers = layer.properties.children
+          .map(childId => layers.find(l => l.id === childId))
+          .filter(Boolean) as Layer[];
+        result.push(...flattenLayers(childLayers));
+      }
+    });
+    
+    return result;
+  };
+
+  const getAbsolutePosition = (layer: Layer, allLayers: Layer[]): { x: number; y: number } => {
+    if (!layer.parentId) {
+      return { x: layer.x, y: layer.y };
+    }
+    
+    const parent = allLayers.find(l => l.id === layer.parentId);
+    if (!parent) {
+      return { x: layer.x, y: layer.y };
+    }
+    
+    const parentPos = getAbsolutePosition(parent, allLayers);
+    return {
+      x: parentPos.x + layer.x,
+      y: parentPos.y + layer.y
+    };
   };
 
   const createPreviewLayer = (tool: Tool, startPos: { x: number; y: number }, currentPos: { x: number; y: number }): Layer => {
@@ -269,6 +466,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       visible: true,
       locked: false,
       opacity: 0.7,
+      rotation: 0,
     };
 
     switch (tool) {
@@ -295,11 +493,11 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       case "text":
         return {
           ...baseLayer,
-          type: "text" as const,
+          type: "container" as const,
           x: startPos.x,
           y: startPos.y,
-          width: 100,
-          height: 24,
+          width: Math.max(100, width),
+          height: Math.max(30, height),
           properties: {
             text: "Text",
             fontSize: 16,
@@ -307,6 +505,11 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             fontWeight: "normal",
             fill: "#000000",
             textAlign: "left",
+            verticalAlign: "top",
+            wordWrap: true,
+            lineHeight: 1.4,
+            padding: 8,
+            overflow: "hidden"
           },
         };
       default:
@@ -373,10 +576,15 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         const layers = canvasData?.layers || [];
         const currentLayer = layers.find(l => l.id === selectedLayerId);
         if (currentLayer) {
-          onLayerUpdate(selectedLayerId, {
-            x: currentLayer.x + dx,
-            y: currentLayer.y + dy,
-          });
+          // If it's a group, move the entire group
+          if (currentLayer.type === "group") {
+            moveGroup(currentLayer, dx, dy, layers);
+          } else {
+            onLayerUpdate(selectedLayerId, {
+              x: currentLayer.x + dx,
+              y: currentLayer.y + dy,
+            });
+          }
         }
         
         setDragStart(pos);
@@ -389,6 +597,31 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       draw();
     } catch (error) {
       console.error("Error handling mouse move:", error);
+    }
+  };
+
+  const moveGroup = (group: Layer, dx: number, dy: number, allLayers: Layer[]) => {
+    // Move the group itself
+    onLayerUpdate(group.id, {
+      x: group.x + dx,
+      y: group.y + dy,
+    });
+
+    // Move all children
+    if (group.properties?.children) {
+      group.properties.children.forEach(childId => {
+        const child = allLayers.find(l => l.id === childId);
+        if (child) {
+          if (child.type === "group") {
+            moveGroup(child, dx, dy, allLayers);
+          } else {
+            onLayerUpdate(childId, {
+              x: child.x + dx,
+              y: child.y + dy,
+            });
+          }
+        }
+      });
     }
   };
 
@@ -415,6 +648,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
               visible: true,
               locked: false,
               opacity: 1,
+              rotation: 0,
               properties: {
                 fill: "#3B82F6",
                 stroke: "#1E40AF",
@@ -432,6 +666,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
               visible: true,
               locked: false,
               opacity: 1,
+              rotation: 0,
               properties: {
                 fill: "#EF4444",
                 stroke: "#DC2626",
@@ -440,15 +675,16 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             });
           } else if (activeTool === "text") {
             onLayerAdd({
-              type: "text",
-              name: "Text",
+              type: "container",
+              name: "Text Container",
               x: drawStart.x,
               y: drawStart.y,
-              width: 100,
-              height: 24,
+              width: Math.max(100, width),
+              height: Math.max(30, height),
               visible: true,
               locked: false,
               opacity: 1,
+              rotation: 0,
               properties: {
                 text: "Text",
                 fontSize: 16,
@@ -456,6 +692,11 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
                 fontWeight: "normal",
                 fill: "#000000",
                 textAlign: "left",
+                verticalAlign: "top",
+                wordWrap: true,
+                lineHeight: 1.4,
+                padding: 8,
+                overflow: "hidden"
               },
             });
           }

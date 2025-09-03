@@ -31,7 +31,9 @@ import {
   Lock,
   Unlock,
   Move3D,
-  Sparkles
+  Sparkles,
+  Group,
+  Ungroup
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -119,6 +121,12 @@ export function DesignEditor() {
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
             saveDesignFile();
+          }
+          break;
+        case 'g':
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            // Group functionality would go here
           }
           break;
         case '?':
@@ -230,6 +238,8 @@ export function DesignEditor() {
         case "layer_update":
         case "layer_add":
         case "layer_delete":
+        case "group":
+        case "ungroup":
           loadDesignFile();
           break;
       }
@@ -342,9 +352,34 @@ export function DesignEditor() {
 
   const deleteLayer = (layerId: string) => {
     try {
+      const layers = canvasData.layers || [];
+      const layerToDelete = layers.find(l => l.id === layerId);
+      
+      if (!layerToDelete) return;
+
+      let layersToDelete = [layerId];
+
+      // If deleting a group, also delete all its children
+      if (layerToDelete.type === "group" && layerToDelete.properties?.children) {
+        layersToDelete = [layerId, ...layerToDelete.properties.children];
+      }
+
+      // If deleting a child, remove it from parent's children array
+      if (layerToDelete.parentId) {
+        const parent = layers.find(l => l.id === layerToDelete.parentId);
+        if (parent && parent.properties?.children) {
+          updateLayer(parent.id, {
+            properties: {
+              ...parent.properties,
+              children: parent.properties.children.filter(childId => childId !== layerId)
+            }
+          });
+        }
+      }
+
       const updatedCanvasData = {
         ...canvasData,
-        layers: (canvasData.layers || []).filter(layer => layer.id !== layerId),
+        layers: layers.filter(layer => !layersToDelete.includes(layer.id)),
       };
 
       setCanvasData(updatedCanvasData);
@@ -376,6 +411,121 @@ export function DesignEditor() {
       addLayer(duplicatedLayer);
     } catch (error) {
       console.error("Error duplicating layer:", error);
+    }
+  };
+
+  const groupLayers = (layerIds: string[]) => {
+    try {
+      if (layerIds.length < 2) return;
+
+      const layers = canvasData.layers || [];
+      const layersToGroup = layerIds.map(id => layers.find(l => l.id === id)).filter(Boolean) as Layer[];
+      
+      if (layersToGroup.length < 2) return;
+
+      // Calculate bounding box for the group
+      const minX = Math.min(...layersToGroup.map(l => l.x));
+      const minY = Math.min(...layersToGroup.map(l => l.y));
+      const maxX = Math.max(...layersToGroup.map(l => l.x + l.width));
+      const maxY = Math.max(...layersToGroup.map(l => l.y + l.height));
+
+      const groupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Create group layer
+      const groupLayer: Layer = {
+        id: groupId,
+        type: "group",
+        name: "Group",
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        visible: true,
+        locked: false,
+        opacity: 1,
+        rotation: 0,
+        properties: {
+          children: layerIds
+        }
+      };
+
+      // Update child layers to have relative positions and parent reference
+      const updatedLayers = layers.map(layer => {
+        if (layerIds.includes(layer.id)) {
+          return {
+            ...layer,
+            x: layer.x - minX,
+            y: layer.y - minY,
+            parentId: groupId
+          };
+        }
+        return layer;
+      });
+
+      // Add the group layer
+      updatedLayers.push(groupLayer);
+
+      const updatedCanvasData = {
+        ...canvasData,
+        layers: updatedLayers,
+      };
+
+      setCanvasData(updatedCanvasData);
+      setSelectedLayerId(groupId);
+
+      sendCollaborationEvent({
+        type: "group",
+        data: { layerIds, groupId },
+      });
+
+      toast({
+        title: "Success",
+        description: "Layers grouped successfully",
+      });
+    } catch (error) {
+      console.error("Error grouping layers:", error);
+    }
+  };
+
+  const ungroupLayer = (groupId: string) => {
+    try {
+      const layers = canvasData.layers || [];
+      const group = layers.find(l => l.id === groupId);
+      
+      if (!group || group.type !== "group" || !group.properties?.children) return;
+
+      // Update child layers to have absolute positions and remove parent reference
+      const updatedLayers = layers.map(layer => {
+        if (group.properties?.children?.includes(layer.id)) {
+          return {
+            ...layer,
+            x: layer.x + group.x,
+            y: layer.y + group.y,
+            parentId: undefined
+          };
+        }
+        return layer;
+      }).filter(layer => layer.id !== groupId); // Remove the group itself
+
+      const updatedCanvasData = {
+        ...canvasData,
+        layers: updatedLayers,
+      };
+
+      setCanvasData(updatedCanvasData);
+      setSelectedLayerId(null);
+
+      sendCollaborationEvent({
+        type: "ungroup",
+        data: { groupId },
+      });
+
+      toast({
+        title: "Success",
+        description: "Group ungrouped successfully",
+      });
+    } catch (error) {
+      console.error("Error ungrouping layer:", error);
     }
   };
 
@@ -532,10 +682,43 @@ export function DesignEditor() {
                   "hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 }`}
                 onClick={() => setActiveTool("text")}
-                title="Text (T)"
+                title="Text Container (T)"
               >
                 <Type className="h-4 w-4" />
               </Button>
+            </div>
+
+            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
+
+            {/* Group Tools */}
+            <div className="flex items-center space-x-1 px-2">
+              {selectedLayer?.type === "group" ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => ungroupLayer(selectedLayer.id)}
+                  className="hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-600 dark:text-orange-400"
+                  title="Ungroup (Cmd+Shift+G)"
+                >
+                  <Ungroup className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // For now, just demonstrate with a toast - full multi-select would need more implementation
+                    toast({
+                      title: "Group Feature",
+                      description: "Multi-select layers and use Cmd+G to group them",
+                    });
+                  }}
+                  className="hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                  title="Group Selected (Cmd+G)"
+                >
+                  <Group className="h-4 w-4" />
+                </Button>
+              )}
             </div>
 
             <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
@@ -667,6 +850,8 @@ export function DesignEditor() {
             onLayerUpdate={updateLayer}
             onLayerDelete={deleteLayer}
             onLayerDuplicate={duplicateLayer}
+            onGroupLayers={groupLayers}
+            onUngroupLayer={ungroupLayer}
           />
         </div>
 
@@ -682,6 +867,8 @@ export function DesignEditor() {
             onViewportChange={(viewport) => 
               setCanvasData(prev => ({ ...prev, viewport }))
             }
+            onGroupLayers={groupLayers}
+            onUngroupLayer={ungroupLayer}
           />
           <CollaborationCursors cursors={collaborators} />
           

@@ -54,9 +54,11 @@ export interface Layer {
   locked: boolean;
   opacity: number;
   properties: LayerProperties;
+  rotation?: number;
+  parentId?: string; // For grouping - reference to parent group
 }
 
-export type LayerType = "rectangle" | "circle" | "text" | "vector" | "group";
+export type LayerType = "rectangle" | "circle" | "text" | "vector" | "group" | "container";
 
 export interface LayerProperties {
   fill?: string;
@@ -68,11 +70,16 @@ export interface LayerProperties {
   fontFamily?: string;
   fontWeight?: string;
   textAlign?: string;
-  children?: string[];
+  children?: string[]; // For groups - array of child layer IDs
+  padding?: number; // For containers
+  overflow?: "visible" | "hidden" | "auto"; // For text containers
+  wordWrap?: boolean; // For text wrapping
+  lineHeight?: number; // For text line spacing
+  verticalAlign?: "top" | "middle" | "bottom"; // For text vertical alignment
 }
 
 export interface CollaborationEvent {
-  type: "cursor" | "layer_update" | "layer_add" | "layer_delete" | "selection_change";
+  type: "cursor" | "layer_update" | "layer_add" | "layer_delete" | "selection_change" | "group" | "ungroup";
   user_id: string;
   user_name: string;
   data: any;
