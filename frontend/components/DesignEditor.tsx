@@ -18,19 +18,11 @@ import {
   Copy, 
   Trash2,
   Zap,
-  Palette,
   Settings,
   Maximize2,
-  RotateCcw,
-  RotateCw,
   ZoomIn,
   ZoomOut,
   Grid,
-  Eye,
-  EyeOff,
-  Lock,
-  Unlock,
-  Move3D,
   Sparkles,
   Group,
   Ungroup
@@ -96,27 +88,15 @@ export function DesignEditor() {
       }
 
       switch (e.key.toLowerCase()) {
-        case 'v':
-          setActiveTool("select");
-          break;
-        case 'r':
-          setActiveTool("rectangle");
-          break;
-        case 'o':
-          setActiveTool("circle");
-          break;
-        case 't':
-          setActiveTool("text");
-          break;
+        case 'v': setActiveTool("select"); break;
+        case 'r': setActiveTool("rectangle"); break;
+        case 'o': setActiveTool("circle"); break;
+        case 't': setActiveTool("text"); break;
         case 'delete':
         case 'backspace':
-          if (selectedLayerId) {
-            deleteLayer(selectedLayerId);
-          }
+          if (selectedLayerId) deleteLayer(selectedLayerId);
           break;
-        case 'escape':
-          setSelectedLayerId(null);
-          break;
+        case 'escape': setSelectedLayerId(null); break;
         case 's':
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
@@ -126,28 +106,32 @@ export function DesignEditor() {
         case 'g':
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
-            // Group functionality would go here
+            if (selectedLayerId) {
+              const layer = canvasData.layers.find(l => l.id === selectedLayerId);
+              if (layer?.type === 'group') {
+                ungroupLayer(selectedLayerId);
+              } else {
+                // Placeholder for multi-select grouping
+                toast({ title: "Group", description: "Select multiple layers to group them." });
+              }
+            }
           }
           break;
         case '?':
-          if (e.shiftKey) {
-            setShowKeyboardShortcuts(true);
-          }
+          if (e.shiftKey) setShowKeyboardShortcuts(true);
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
-  }, [selectedLayerId]);
+  }, [selectedLayerId, canvasData.layers]);
 
   const loadDesignFile = async () => {
     setLoading(true);
     setError(null);
     try {
-      if (!designId) {
-        throw new Error("No design ID provided");
-      }
+      if (!designId) throw new Error("No design ID provided");
       
       const response = await backend.design.getDesignFile({ id: parseInt(designId, 10) });
       setDesignFile(response);
@@ -162,26 +146,16 @@ export function DesignEditor() {
         }
       }
 
-      let safeCanvasData: CanvasData;
-      if (parsedCanvasData && typeof parsedCanvasData === 'object' && 'layers' in parsedCanvasData) {
-        safeCanvasData = {
-          layers: Array.isArray(parsedCanvasData.layers) ? parsedCanvasData.layers : [],
-          viewport: parsedCanvasData.viewport || { x: 0, y: 0, zoom: 1 }
-        };
-      } else {
-        safeCanvasData = { layers: [], viewport: { x: 0, y: 0, zoom: 1 } };
-      }
+      const safeCanvasData: CanvasData = (parsedCanvasData && typeof parsedCanvasData === 'object' && 'layers' in parsedCanvasData)
+        ? { layers: Array.isArray(parsedCanvasData.layers) ? parsedCanvasData.layers : [], viewport: parsedCanvasData.viewport || { x: 0, y: 0, zoom: 1 } }
+        : { layers: [], viewport: { x: 0, y: 0, zoom: 1 } };
       
       setCanvasData(safeCanvasData);
       
     } catch (error) {
       console.error("Failed to load design file:", error);
       setError("Failed to load design file. It may not exist or there was a network error.");
-      toast({
-        title: "Error",
-        description: "Failed to load design file.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to load design file.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -194,12 +168,7 @@ export function DesignEditor() {
       const userId = `user_${Math.random().toString(36).substr(2, 9)}`;
       const userName = `User ${Math.floor(Math.random() * 1000)}`;
       
-      const stream = await backend.collaboration.collaborate({
-        design_file_id: designId,
-        user_id: userId,
-        user_name: userName,
-      });
-
+      const stream = await backend.collaboration.collaborate({ design_file_id: designId, user_id: userId, user_name: userName });
       collaborationRef.current = stream;
 
       (async () => {
@@ -217,47 +186,31 @@ export function DesignEditor() {
   };
 
   const handleCollaborationEvent = (event: CollaborationEvent) => {
-    try {
-      switch (event.type) {
-        case "cursor":
-          if (event.data?.left) {
-            setCollaborators(prev => prev.filter(c => c.user_id !== event.user_id));
-          } else if (event.data?.x !== undefined && event.data?.y !== undefined) {
-            setCollaborators(prev => {
-              const filtered = prev.filter(c => c.user_id !== event.user_id);
-              return [...filtered, {
-                user_id: event.user_id,
-                user_name: event.user_name,
-                x: event.data.x,
-                y: event.data.y,
-                color: event.data.color || "#6366F1"
-              }];
-            });
-          }
-          break;
-        case "layer_update":
-        case "layer_add":
-        case "layer_delete":
-        case "group":
-        case "ungroup":
-          loadDesignFile();
-          break;
-      }
-    } catch (error) {
-      console.error("Error handling collaboration event:", error);
+    switch (event.type) {
+      case "cursor":
+        if (event.data?.left) {
+          setCollaborators(prev => prev.filter(c => c.user_id !== event.user_id));
+        } else if (event.data?.x !== undefined && event.data?.y !== undefined) {
+          setCollaborators(prev => {
+            const filtered = prev.filter(c => c.user_id !== event.user_id);
+            return [...filtered, { user_id: event.user_id, user_name: event.user_name, x: event.data.x, y: event.data.y, color: event.data.color || "#6366F1" }];
+          });
+        }
+        break;
+      case "layer_update":
+      case "layer_add":
+      case "layer_delete":
+      case "group":
+      case "ungroup":
+        loadDesignFile();
+        break;
     }
   };
 
   const sendCollaborationEvent = async (event: Partial<CollaborationEvent>) => {
     if (collaborationRef.current) {
       try {
-        await collaborationRef.current.send({
-          type: event.type!,
-          user_id: "",
-          user_name: "",
-          data: event.data,
-          timestamp: Date.now(),
-        });
+        await collaborationRef.current.send({ type: event.type!, user_id: "", user_name: "", data: event.data, timestamp: Date.now() });
       } catch (error) {
         console.error("Failed to send collaboration event:", error);
       }
@@ -265,687 +218,183 @@ export function DesignEditor() {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    try {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      
-      sendCollaborationEvent({
-        type: "cursor",
-        data: { x, y, color: "#6366F1" }
-      });
-    } catch (error) {
-      console.error("Error handling mouse move:", error);
-    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    sendCollaborationEvent({ type: "cursor", data: { x, y, color: "#6366F1" } });
   };
 
   const saveDesignFile = async (saveVersion = false) => {
     if (!designFile) return;
-
     setSaving(true);
     try {
-      await backend.design.updateDesignFile({
-        id: designFile.id,
-        canvas_data: canvasData,
-        save_version: saveVersion,
-      });
-      
-      toast({
-        title: "Success",
-        description: saveVersion ? "Version saved" : "Design saved",
-      });
+      await backend.design.updateDesignFile({ id: designFile.id, canvas_data: canvasData, save_version: saveVersion });
+      toast({ title: "Success", description: saveVersion ? "Version saved" : "Design saved" });
     } catch (error) {
       console.error("Failed to save design:", error);
-      toast({
-        title: "Error",
-        description: "Failed to save design",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to save design", variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
   const addLayer = (layer: Omit<Layer, "id">) => {
-    try {
-      const newLayer: Layer = {
-        ...layer,
-        id: `layer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      };
-
-      const updatedCanvasData = {
-        ...canvasData,
-        layers: [...(canvasData.layers || []), newLayer],
-      };
-
-      setCanvasData(updatedCanvasData);
-      setSelectedLayerId(newLayer.id);
-
-      sendCollaborationEvent({
-        type: "layer_add",
-        data: newLayer,
-      });
-    } catch (error) {
-      console.error("Error adding layer:", error);
-    }
+    const newLayer: Layer = { ...layer, id: `layer_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` };
+    setCanvasData(prev => ({ ...prev, layers: [...(prev.layers || []), newLayer] }));
+    setSelectedLayerId(newLayer.id);
+    sendCollaborationEvent({ type: "layer_add", data: newLayer });
   };
 
   const updateLayer = (layerId: string, updates: Partial<Layer>) => {
-    try {
-      const updatedCanvasData = {
-        ...canvasData,
-        layers: (canvasData.layers || []).map(layer =>
-          layer.id === layerId ? { ...layer, ...updates } : layer
-        ),
-      };
-
-      setCanvasData(updatedCanvasData);
-
-      sendCollaborationEvent({
-        type: "layer_update",
-        data: { layerId, updates },
-      });
-    } catch (error) {
-      console.error("Error updating layer:", error);
-    }
+    setCanvasData(prev => ({ ...prev, layers: (prev.layers || []).map(l => l.id === layerId ? { ...l, ...updates } : l) }));
+    sendCollaborationEvent({ type: "layer_update", data: { layerId, updates } });
   };
 
   const deleteLayer = (layerId: string) => {
-    try {
-      const layers = canvasData.layers || [];
-      const layerToDelete = layers.find(l => l.id === layerId);
-      
-      if (!layerToDelete) return;
+    const layers = canvasData.layers || [];
+    const layerToDelete = layers.find(l => l.id === layerId);
+    if (!layerToDelete) return;
 
-      let layersToDelete = [layerId];
-
-      // If deleting a group, also delete all its children
-      if (layerToDelete.type === "group" && layerToDelete.properties?.children) {
-        layersToDelete = [layerId, ...layerToDelete.properties.children];
-      }
-
-      // If deleting a child, remove it from parent's children array
-      if (layerToDelete.parentId) {
-        const parent = layers.find(l => l.id === layerToDelete.parentId);
-        if (parent && parent.properties?.children) {
-          updateLayer(parent.id, {
-            properties: {
-              ...parent.properties,
-              children: parent.properties.children.filter(childId => childId !== layerId)
-            }
-          });
-        }
-      }
-
-      const updatedCanvasData = {
-        ...canvasData,
-        layers: layers.filter(layer => !layersToDelete.includes(layer.id)),
-      };
-
-      setCanvasData(updatedCanvasData);
-      if (selectedLayerId === layerId) {
-        setSelectedLayerId(null);
-      }
-
-      sendCollaborationEvent({
-        type: "layer_delete",
-        data: { layerId },
-      });
-    } catch (error) {
-      console.error("Error deleting layer:", error);
+    let layersToDelete = [layerId];
+    if (layerToDelete.type === "group" && layerToDelete.properties?.children) {
+      layersToDelete = [...layersToDelete, ...layerToDelete.properties.children];
     }
+
+    const updatedLayers = layers.filter(l => !layersToDelete.includes(l.id)).map(l => {
+      if (l.properties?.children?.includes(layerId)) {
+        return { ...l, properties: { ...l.properties, children: l.properties.children.filter(id => id !== layerId) } };
+      }
+      return l;
+    });
+
+    setCanvasData(prev => ({ ...prev, layers: updatedLayers }));
+    if (selectedLayerId === layerId) setSelectedLayerId(null);
+    sendCollaborationEvent({ type: "layer_delete", data: { layerId } });
   };
 
   const duplicateLayer = (layerId: string) => {
-    try {
-      const layer = (canvasData.layers || []).find(l => l.id === layerId);
-      if (!layer) return;
-
-      const duplicatedLayer: Omit<Layer, "id"> = {
-        ...layer,
-        name: `${layer.name} Copy`,
-        x: layer.x + 10,
-        y: layer.y + 10,
-      };
-
-      addLayer(duplicatedLayer);
-    } catch (error) {
-      console.error("Error duplicating layer:", error);
-    }
-  };
-
-  const groupLayers = (layerIds: string[]) => {
-    try {
-      if (layerIds.length < 2) return;
-
-      const layers = canvasData.layers || [];
-      const layersToGroup = layerIds.map(id => layers.find(l => l.id === id)).filter(Boolean) as Layer[];
-      
-      if (layersToGroup.length < 2) return;
-
-      // Calculate bounding box for the group
-      const minX = Math.min(...layersToGroup.map(l => l.x));
-      const minY = Math.min(...layersToGroup.map(l => l.y));
-      const maxX = Math.max(...layersToGroup.map(l => l.x + l.width));
-      const maxY = Math.max(...layersToGroup.map(l => l.y + l.height));
-
-      const groupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // Create group layer
-      const groupLayer: Layer = {
-        id: groupId,
-        type: "group",
-        name: "Group",
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-        visible: true,
-        locked: false,
-        opacity: 1,
-        rotation: 0,
-        properties: {
-          children: layerIds
-        }
-      };
-
-      // Update child layers to have relative positions and parent reference
-      const updatedLayers = layers.map(layer => {
-        if (layerIds.includes(layer.id)) {
-          return {
-            ...layer,
-            x: layer.x - minX,
-            y: layer.y - minY,
-            parentId: groupId
-          };
-        }
-        return layer;
-      });
-
-      // Add the group layer
-      updatedLayers.push(groupLayer);
-
-      const updatedCanvasData = {
-        ...canvasData,
-        layers: updatedLayers,
-      };
-
-      setCanvasData(updatedCanvasData);
-      setSelectedLayerId(groupId);
-
-      sendCollaborationEvent({
-        type: "group",
-        data: { layerIds, groupId },
-      });
-
-      toast({
-        title: "Success",
-        description: "Layers grouped successfully",
-      });
-    } catch (error) {
-      console.error("Error grouping layers:", error);
-    }
+    const layer = (canvasData.layers || []).find(l => l.id === layerId);
+    if (!layer) return;
+    addLayer({ ...layer, name: `${layer.name} Copy`, x: layer.x + 10, y: layer.y + 10 });
   };
 
   const ungroupLayer = (groupId: string) => {
-    try {
-      const layers = canvasData.layers || [];
-      const group = layers.find(l => l.id === groupId);
-      
-      if (!group || group.type !== "group" || !group.properties?.children) return;
+    const layers = canvasData.layers || [];
+    const group = layers.find(l => l.id === groupId);
+    if (!group || group.type !== 'group' || !group.properties?.children) return;
 
-      // Update child layers to have absolute positions and remove parent reference
-      const updatedLayers = layers.map(layer => {
-        if (group.properties?.children?.includes(layer.id)) {
-          return {
-            ...layer,
-            x: layer.x + group.x,
-            y: layer.y + group.y,
-            parentId: undefined
-          };
+    const childIds = group.properties.children;
+    const updatedLayers = layers
+      .filter(l => l.id !== groupId)
+      .map(l => {
+        if (childIds.includes(l.id)) {
+          return { ...l, x: l.x + group.x, y: l.y + group.y, parentId: undefined };
         }
-        return layer;
-      }).filter(layer => layer.id !== groupId); // Remove the group itself
-
-      const updatedCanvasData = {
-        ...canvasData,
-        layers: updatedLayers,
-      };
-
-      setCanvasData(updatedCanvasData);
-      setSelectedLayerId(null);
-
-      sendCollaborationEvent({
-        type: "ungroup",
-        data: { groupId },
+        return l;
       });
 
-      toast({
-        title: "Success",
-        description: "Group ungrouped successfully",
-      });
-    } catch (error) {
-      console.error("Error ungrouping layer:", error);
-    }
+    setCanvasData(prev => ({ ...prev, layers: updatedLayers }));
+    setSelectedLayerId(null);
+    toast({ title: "Ungrouped", description: "Layers have been ungrouped." });
+    sendCollaborationEvent({ type: "ungroup", data: { groupId } });
   };
 
   const handleDuplicateFile = async () => {
     if (!designFile) return;
-
     try {
       await backend.design.duplicateDesignFile({ id: designFile.id });
-      toast({
-        title: "Success",
-        description: "Design file duplicated",
-      });
+      toast({ title: "Success", description: "Design file duplicated" });
     } catch (error) {
       console.error("Failed to duplicate file:", error);
-      toast({
-        title: "Error",
-        description: "Failed to duplicate file",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to duplicate file", variant: "destructive" });
     }
   };
 
   const handleAIRefine = (refinedCanvasData: CanvasData, description: string) => {
     setCanvasData(refinedCanvasData);
-    toast({
-      title: "AI Refinement Applied",
-      description: description,
-    });
+    toast({ title: "AI Refinement Applied", description: description });
   };
 
-  const selectedLayer = selectedLayerId && canvasData.layers ? 
-    canvasData.layers.find(l => l.id === selectedLayerId) : null;
+  const selectedLayer = selectedLayerId && canvasData.layers ? canvasData.layers.find(l => l.id === selectedLayerId) : null;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-950 dark:to-neutral-900">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-6 relative">
-            <div className="absolute inset-0 rounded-full gradient-primary animate-pulse"></div>
-            <div className="absolute inset-2 rounded-full bg-white dark:bg-neutral-900"></div>
-            <div className="absolute inset-4 rounded-full gradient-primary animate-spin"></div>
-          </div>
-          <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">Loading design canvas</h3>
-          <p className="text-neutral-500 dark:text-neutral-400">Preparing your creative workspace...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !designFile) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-950 dark:to-neutral-900">
-        <div className="text-center">
-          <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-red-100 to-red-200 dark:from-red-900 dark:to-red-800 rounded-2xl flex items-center justify-center">
-            <Zap className="h-8 w-8 text-red-600 dark:text-red-400" />
-          </div>
-          <h2 className="text-2xl font-semibold text-neutral-900 dark:text-white mb-3">
-            {error || "Design not found"}
-          </h2>
-          <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8 max-w-md mx-auto">
-            {error || "The design file you're looking for doesn't exist."}
-          </p>
-          <Link to="/">
-            <Button size="lg" className="gradient-primary text-white shadow-lg hover:shadow-xl transition-all duration-200">
-              <ArrowLeft className="h-5 w-5 mr-2" />
-              Back to Projects
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  if (error || !designFile) return <div className="flex items-center justify-center h-screen">{error || "Design not found"}</div>;
 
   return (
-    <div className={`flex flex-col h-screen bg-neutral-50 dark:bg-neutral-950 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
-      {/* Modern Floating Toolbar */}
+    <div className={`flex flex-col h-screen bg-neutral-50 dark:bg-neutral-950 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
       <div className="glass dark:glass-dark border-b border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
         <div className="flex items-center justify-between px-6 py-3">
-          {/* Left Section */}
           <div className="flex items-center space-x-4">
-            <Link to="/">
-              <Button variant="ghost" size="sm" className="text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </Link>
+            <Link to="/"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Back</Button></Link>
             <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
-            <h2 className="font-semibold text-lg text-neutral-900 dark:text-white">{designFile.name}</h2>
+            <h2 className="font-semibold text-lg">{designFile.name}</h2>
           </div>
 
-          {/* Center - Modern Tool Groups */}
-          <div className="flex items-center space-x-1 bg-white dark:bg-neutral-800 rounded-xl p-1 shadow-sm border border-neutral-200 dark:border-neutral-700">
-            {/* Selection Tools */}
-            <div className="flex items-center space-x-1 pr-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-200 ${activeTool === "select" ? 
-                  "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 shadow-sm" : 
-                  "hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                }`}
-                onClick={() => setActiveTool("select")}
-                title="Select (V)"
-              >
-                <MousePointer className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-200 ${activeTool === "pan" ? 
-                  "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 shadow-sm" : 
-                  "hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                }`}
-                onClick={() => setActiveTool("pan")}
-                title="Pan (Space)"
-              >
-                <Hand className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
-
-            {/* Shape Tools */}
-            <div className="flex items-center space-x-1 px-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-200 ${activeTool === "rectangle" ? 
-                  "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 shadow-sm" : 
-                  "hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                }`}
-                onClick={() => setActiveTool("rectangle")}
-                title="Rectangle (R)"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-200 ${activeTool === "circle" ? 
-                  "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 shadow-sm" : 
-                  "hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                }`}
-                onClick={() => setActiveTool("circle")}
-                title="Circle (O)"
-              >
-                <Circle className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-200 ${activeTool === "text" ? 
-                  "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 shadow-sm" : 
-                  "hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                }`}
-                onClick={() => setActiveTool("text")}
-                title="Text Container (T)"
-              >
-                <Type className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
-
-            {/* Group Tools */}
-            <div className="flex items-center space-x-1 px-2">
-              {selectedLayer?.type === "group" ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => ungroupLayer(selectedLayer.id)}
-                  className="hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-600 dark:text-orange-400"
-                  title="Ungroup (Cmd+Shift+G)"
-                >
-                  <Ungroup className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    // For now, just demonstrate with a toast - full multi-select would need more implementation
-                    toast({
-                      title: "Group Feature",
-                      description: "Multi-select layers and use Cmd+G to group them",
-                    });
-                  }}
-                  className="hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                  title="Group Selected (Cmd+G)"
-                >
-                  <Group className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
-
-            {/* AI Tools */}
-            <div className="flex items-center space-x-1 px-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowAIRefine(true)}
-                className="hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
-                title="AI Refine"
-              >
-                <Sparkles className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700"></div>
-
-            {/* View Tools */}
-            <div className="flex items-center space-x-1 pl-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-200 ${showGrid ? 
-                  "bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300" : 
-                  "hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                }`}
-                onClick={() => setShowGrid(!showGrid)}
-                title="Toggle Grid"
-              >
-                <Grid className="h-4 w-4" />
-              </Button>
-            </div>
+          <div className="flex items-center space-x-1 bg-white dark:bg-neutral-800 rounded-xl p-1 shadow-sm border">
+            <Button variant={activeTool === "select" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTool("select")} title="Select (V)"><MousePointer className="h-4 w-4" /></Button>
+            <Button variant={activeTool === "pan" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTool("pan")} title="Pan (Space)"><Hand className="h-4 w-4" /></Button>
+            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700 mx-1"></div>
+            <Button variant={activeTool === "rectangle" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTool("rectangle")} title="Rectangle (R)"><Square className="h-4 w-4" /></Button>
+            <Button variant={activeTool === "circle" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTool("circle")} title="Circle (O)"><Circle className="h-4 w-4" /></Button>
+            <Button variant={activeTool === "text" ? "secondary" : "ghost"} size="sm" onClick={() => setActiveTool("text")} title="Text (T)"><Type className="h-4 w-4" /></Button>
+            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700 mx-1"></div>
+            {selectedLayer?.type === "group" ? (
+              <Button variant="ghost" size="sm" onClick={() => ungroupLayer(selectedLayer.id)} title="Ungroup (Cmd+Shift+G)"><Ungroup className="h-4 w-4" /></Button>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => toast({ title: "Group", description: "Multi-select not yet implemented." })} title="Group (Cmd+G)"><Group className="h-4 w-4" /></Button>
+            )}
+            <div className="h-6 w-px bg-neutral-200 dark:bg-neutral-700 mx-1"></div>
+            <Button variant="ghost" size="sm" onClick={() => setShowAIRefine(true)} title="AI Refine"><Sparkles className="h-4 w-4" /></Button>
           </div>
 
-          {/* Right Section */}
           <div className="flex items-center space-x-3">
-            {/* Collaboration Indicator */}
-            <div className="flex items-center space-x-2 bg-white dark:bg-neutral-800 rounded-lg px-3 py-1.5 shadow-sm border border-neutral-200 dark:border-neutral-700">
-              <div className="flex -space-x-1">
-                <div className="w-6 h-6 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full border-2 border-white dark:border-neutral-800 flex items-center justify-center">
-                  <span className="text-xs font-medium text-white">You</span>
-                </div>
-                {collaborators.slice(0, 3).map((collaborator, index) => (
-                  <div key={collaborator.user_id} className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full border-2 border-white dark:border-neutral-800 flex items-center justify-center">
-                    <span className="text-xs font-medium text-white">{collaborator.user_name[0]}</span>
-                  </div>
-                ))}
-                {collaborators.length > 3 && (
-                  <div className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 rounded-full border-2 border-white dark:border-neutral-800 flex items-center justify-center">
-                    <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">+{collaborators.length - 3}</span>
-                  </div>
-                )}
-              </div>
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">{collaborators.length + 1} online</span>
+            <div className="flex items-center -space-x-2">
+              {collaborators.map(c => <div key={c.user_id} className="w-8 h-8 rounded-full border-2 border-white" style={{ backgroundColor: c.color }}></div>)}
             </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" onClick={() => setShowComments(true)} className="text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white">
-                <MessageCircle className="h-4 w-4" />
-              </Button>
-              
-              <Button variant="ghost" size="sm" onClick={() => setShowVersionHistory(true)} className="text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white">
-                <Clock className="h-4 w-4" />
-              </Button>
-              
-              <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)} className="border-neutral-200 dark:border-neutral-700">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
-              
-              <Button 
-                size="sm" 
-                onClick={() => saveDesignFile()} 
-                disabled={saving}
-                className="gradient-primary text-white shadow-lg hover:shadow-xl transition-all duration-200"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? "Saving..." : "Save"}
-              </Button>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl">
-                  <DropdownMenuItem onClick={handleDuplicateFile} className="cursor-pointer">
-                    <Copy className="h-4 w-4 mr-2" />
-                    Duplicate File
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => saveDesignFile(true)} className="cursor-pointer">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Version
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setIsFullscreen(!isFullscreen)} className="cursor-pointer">
-                    <Maximize2 className="h-4 w-4 mr-2" />
-                    {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowKeyboardShortcuts(true)} className="cursor-pointer">
-                    <Keyboard className="h-4 w-4 mr-2" />
-                    Keyboard Shortcuts
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            <Button variant="ghost" size="sm" onClick={() => setShowComments(true)}><MessageCircle className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowVersionHistory(true)}><Clock className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)}><Download className="h-4 w-4 mr-2" />Export</Button>
+            <Button size="sm" onClick={() => saveDesignFile()} disabled={saving}><Save className="h-4 w-4 mr-2" />{saving ? "Saving..." : "Save"}</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleDuplicateFile}><Copy className="h-4 w-4 mr-2" />Duplicate File</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => saveDesignFile(true)}><Save className="h-4 w-4 mr-2" />Save Version</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsFullscreen(!isFullscreen)}><Maximize2 className="h-4 w-4 mr-2" />{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowKeyboardShortcuts(true)}><Keyboard className="h-4 w-4 mr-2" />Keyboard Shortcuts</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
 
-      {/* Main Workspace */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Layers Panel */}
-        <div className="w-72 glass dark:glass-dark border-r border-neutral-200/50 dark:border-neutral-800/50 overflow-y-auto">
-          <div className="p-4 border-b border-neutral-200/50 dark:border-neutral-800/50">
-            <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center text-sm">
-              <Layers className="h-4 w-4 mr-2 text-primary-600 dark:text-primary-400" />
-              Layers ({canvasData.layers?.length || 0})
-            </h3>
-          </div>
-          <LayerPanel
-            layers={canvasData.layers}
-            selectedLayerId={selectedLayerId}
-            onLayerSelect={setSelectedLayerId}
-            onLayerUpdate={updateLayer}
-            onLayerDelete={deleteLayer}
-            onLayerDuplicate={duplicateLayer}
-            onGroupLayers={groupLayers}
-            onUngroupLayer={ungroupLayer}
-          />
+        <div className="w-72 glass dark:glass-dark border-r overflow-y-auto">
+          <div className="p-4 border-b"><h3 className="font-semibold flex items-center"><Layers className="h-4 w-4 mr-2" />Layers</h3></div>
+          <LayerPanel layers={canvasData.layers} selectedLayerId={selectedLayerId} onLayerSelect={setSelectedLayerId} onLayerUpdate={updateLayer} onLayerDelete={deleteLayer} onLayerDuplicate={duplicateLayer} onUngroupLayer={ungroupLayer} />
         </div>
 
-        {/* Center - Modern Canvas */}
-        <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-neutral-100 via-white to-neutral-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900" onMouseMove={handleMouseMove}>
-          <Canvas
-            canvasData={canvasData}
-            selectedLayerId={selectedLayerId}
-            activeTool={activeTool}
-            onLayerSelect={setSelectedLayerId}
-            onLayerAdd={addLayer}
-            onLayerUpdate={updateLayer}
-            onViewportChange={(viewport) => 
-              setCanvasData(prev => ({ ...prev, viewport }))
-            }
-            onGroupLayers={groupLayers}
-            onUngroupLayer={ungroupLayer}
-          />
+        <div className="flex-1 relative bg-neutral-100 dark:bg-neutral-900" onMouseMove={handleMouseMove}>
+          <Canvas canvasData={canvasData} selectedLayerId={selectedLayerId} activeTool={activeTool} onLayerSelect={setSelectedLayerId} onLayerAdd={addLayer} onLayerUpdate={updateLayer} onViewportChange={(viewport) => setCanvasData(prev => ({ ...prev, viewport }))} />
           <CollaborationCursors cursors={collaborators} />
-          
-          {/* Floating Canvas Controls */}
-          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
-            <div className="glass dark:glass-dark rounded-xl p-2 shadow-lg border border-neutral-200/50 dark:border-neutral-800/50">
-              <div className="flex items-center space-x-1">
-                <Button variant="ghost" size="sm" title="Zoom Out">
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400 px-2">
-                  {Math.round((canvasData.viewport?.zoom || 1) * 100)}%
-                </span>
-                <Button variant="ghost" size="sm" title="Zoom In">
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-                <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700 mx-1"></div>
-                <Button variant="ghost" size="sm" title="Fit to Screen">
-                  <Maximize2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Right Sidebar - Properties Panel */}
-        <div className="w-72 glass dark:glass-dark border-l border-neutral-200/50 dark:border-neutral-800/50 overflow-y-auto">
-          <div className="p-4 border-b border-neutral-200/50 dark:border-neutral-800/50">
-            <h3 className="font-semibold text-neutral-900 dark:text-white text-sm flex items-center">
-              <Settings className="h-4 w-4 mr-2 text-primary-600 dark:text-primary-400" />
-              Properties
-            </h3>
-          </div>
-          <PropertiesPanel
-            selectedLayer={selectedLayer}
-            onLayerUpdate={(updates) => selectedLayer && updateLayer(selectedLayer.id, updates)}
-          />
+        <div className="w-72 glass dark:glass-dark border-l overflow-y-auto">
+          <div className="p-4 border-b"><h3 className="font-semibold flex items-center"><Settings className="h-4 w-4 mr-2" />Properties</h3></div>
+          <PropertiesPanel selectedLayer={selectedLayer} onLayerUpdate={(updates) => selectedLayer && updateLayer(selectedLayer.id, updates)} />
         </div>
       </div>
 
-      {/* Modern Dialogs and Panels */}
       {designId && (
         <>
-          <VersionHistory
-            designFileId={parseInt(designId)}
-            isOpen={showVersionHistory}
-            onClose={() => setShowVersionHistory(false)}
-            onVersionRestored={loadDesignFile}
-          />
-          
-          <ExportDialog
-            designFileId={parseInt(designId)}
-            designFileName={designFile.name}
-            isOpen={showExportDialog}
-            onClose={() => setShowExportDialog(false)}
-          />
-          
-          <CommentsPanel
-            designFileId={parseInt(designId)}
-            isOpen={showComments}
-            onClose={() => setShowComments(false)}
-          />
-
-          <AIRefineDialog
-            isOpen={showAIRefine}
-            onClose={() => setShowAIRefine(false)}
-            onDesignRefined={handleAIRefine}
-            currentCanvasData={canvasData}
-            selectedLayerId={selectedLayerId}
-          />
+          <VersionHistory designFileId={parseInt(designId)} isOpen={showVersionHistory} onClose={() => setShowVersionHistory(false)} onVersionRestored={loadDesignFile} />
+          <ExportDialog designFileId={parseInt(designId)} designFileName={designFile.name} isOpen={showExportDialog} onClose={() => setShowExportDialog(false)} />
+          <CommentsPanel designFileId={parseInt(designId)} isOpen={showComments} onClose={() => setShowComments(false)} />
+          <AIRefineDialog isOpen={showAIRefine} onClose={() => setShowAIRefine(false)} onDesignRefined={handleAIRefine} currentCanvasData={canvasData} selectedLayerId={selectedLayerId} />
         </>
       )}
-      
-      <KeyboardShortcuts
-        isOpen={showKeyboardShortcuts}
-        onClose={() => setShowKeyboardShortcuts(false)}
-      />
+      <KeyboardShortcuts isOpen={showKeyboardShortcuts} onClose={() => setShowKeyboardShortcuts(false)} />
     </div>
   );
 }
