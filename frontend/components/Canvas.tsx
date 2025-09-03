@@ -4,17 +4,17 @@ import type { Tool } from "./DesignEditor";
 
 interface CanvasProps {
   canvasData: CanvasData;
-  selectedLayerId: string | null;
+  selectedLayerIds: string[];
   activeTool: Tool;
-  onLayerSelect: (layerId: string | null) => void;
+  onLayerSelect: (ids: string[]) => void;
   onLayerAdd: (layer: Omit<Layer, "id">) => void;
   onLayerUpdate: (layerId: string, updates: Partial<Layer>) => void;
   onViewportChange: (viewport: { x: number; y: number; zoom: number }) => void;
 }
 
-export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
+export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({ 
   canvasData,
-  selectedLayerId,
+  selectedLayerIds,
   activeTool,
   onLayerSelect,
   onLayerAdd,
@@ -29,6 +29,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
   const [previewLayer, setPreviewLayer] = useState<Layer | null>(null);
+  const [dragInitialPositions, setDragInitialPositions] = useState<Record<string, { x: number; y: number }>>({});
 
   useImperativeHandle(ref, () => canvasRef.current!);
 
@@ -58,7 +59,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
 
     const rootLayers = layers.filter(layer => !layer.parentId);
     rootLayers.forEach(layer => {
-      drawLayerRecursive(ctx, layer, layers, selectedLayerId);
+      drawLayerRecursive(ctx, layer, layers, selectedLayerIds);
     });
 
     if (previewLayer) {
@@ -66,7 +67,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
 
     ctx.restore();
-  }, [canvasData, selectedLayerId, previewLayer]);
+  }, [canvasData, selectedLayerIds, previewLayer]);
 
   useEffect(() => {
     draw();
@@ -97,7 +98,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
   };
 
-  const drawLayerRecursive = (ctx: CanvasRenderingContext2D, layer: Layer, allLayers: Layer[], currentSelectedId: string | null) => {
+  const drawLayerRecursive = (ctx: CanvasRenderingContext2D, layer: Layer, allLayers: Layer[], currentSelectedIds: string[]) => {
     if (!layer || layer.visible === false) return;
 
     ctx.save();
@@ -111,7 +112,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       ctx.translate(-centerX, -centerY);
     }
 
-    const isSelected = layer.id === currentSelectedId;
+    const isSelected = currentSelectedIds.includes(layer.id);
     const layerAtOrigin = { ...layer, x: 0, y: 0 };
 
     if (layer.type !== 'group') {
@@ -124,7 +125,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       layer.properties.children.forEach(childId => {
         const childLayer = allLayers.find(l => l.id === childId);
         if (childLayer) {
-          drawLayerRecursive(ctx, childLayer, allLayers, currentSelectedId);
+          drawLayerRecursive(ctx, childLayer, allLayers, currentSelectedIds);
         }
       });
     }
@@ -218,7 +219,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     if (wordWrap) {
       const words = layer.properties.text.split(' ');
       let line = '';
-      const lines = [];
+      const lines = [] as string[];
 
       for (let n = 0; n < words.length; n++) {
         const testLine = line + words[n] + ' ';
@@ -320,7 +321,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
 
       if (layer.visible === false || layer.locked) return null;
 
-      let hit = null;
+      let hit: Layer | null = null;
       if (x >= absoluteX && x <= absoluteX + layer.width &&
           y >= absoluteY && y <= absoluteY + layer.height) {
         hit = layer;
@@ -364,13 +365,13 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
 
     switch (tool) {
       case "rectangle":
-        return { ...baseLayer, type: "rectangle", properties: { fill: "#3B82F6", stroke: "#1E40AF", strokeWidth: 1 } };
+        return { ...baseLayer, type: "rectangle", properties: { fill: "#3B82F6", stroke: "#1E40AF", strokeWidth: 1 } } as Layer;
       case "circle":
-        return { ...baseLayer, type: "circle", properties: { fill: "#EF4444", stroke: "#DC2626", strokeWidth: 1 } };
+        return { ...baseLayer, type: "circle", properties: { fill: "#EF4444", stroke: "#DC2626", strokeWidth: 1 } } as Layer;
       case "text":
-        return { ...baseLayer, type: "container", name: "Text Container", properties: { text: "Type something...", fontSize: 16, fontFamily: "Arial", fill: "#000000", padding: 8, wordWrap: true, lineHeight: 1.4, verticalAlign: "top" } };
+        return { ...baseLayer, type: "container", name: "Text Container", properties: { text: "Type something...", fontSize: 16, fontFamily: "Arial", fill: "#000000", padding: 8, wordWrap: true, lineHeight: 1.4, verticalAlign: "top" } } as Layer;
       default:
-        return { ...baseLayer, type: "rectangle", properties: {} };
+        return { ...baseLayer, type: "rectangle", properties: {} } as Layer;
     }
   };
 
@@ -386,6 +387,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
 
     if (activeTool === "select") {
       const clickedLayer = getLayerAt(pos.x, pos.y);
+      const isToggle = e.shiftKey || e.metaKey || e.ctrlKey;
       if (clickedLayer) {
         let selectableLayer = clickedLayer;
         while (selectableLayer.parentId) {
@@ -396,10 +398,33 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             break;
           }
         }
-        onLayerSelect(selectableLayer.id);
-        setIsDragging(true);
+
+        let nextSelection = [] as string[];
+        if (isToggle) {
+          if (selectedLayerIds.includes(selectableLayer.id)) {
+            nextSelection = selectedLayerIds.filter(id => id !== selectableLayer.id);
+          } else {
+            nextSelection = [...selectedLayerIds, selectableLayer.id];
+          }
+        } else {
+          nextSelection = [selectableLayer.id];
+        }
+        onLayerSelect(nextSelection);
+
+        if (nextSelection.includes(selectableLayer.id)) {
+          setIsDragging(true);
+          const initial: Record<string, { x: number; y: number }> = {};
+          nextSelection.forEach(id => {
+            const layer = canvasData.layers.find(l => l.id === id);
+            if (layer) initial[id] = { x: layer.x, y: layer.y };
+          });
+          setDragInitialPositions(initial);
+        } else {
+          setIsDragging(false);
+        }
       } else {
-        onLayerSelect(null);
+        if (!isToggle) onLayerSelect([]);
+        setIsDragging(false);
       }
     } else if (activeTool === "pan") {
       setIsPanning(true);
@@ -419,13 +444,16 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       const viewport = canvasData?.viewport || { x: 0, y: 0, zoom: 1 };
       onViewportChange({ ...viewport, x: viewport.x + dx, y: viewport.y + dy });
       setLastPanPoint({ x: e.clientX, y: e.clientY });
-    } else if (isDragging && selectedLayerId) {
+    } else if (isDragging && selectedLayerIds.length > 0) {
       const dx = pos.x - dragStart.x;
       const dy = pos.y - dragStart.y;
-      const currentLayer = canvasData.layers.find(l => l.id === selectedLayerId);
-      if (currentLayer) {
-        onLayerUpdate(selectedLayerId, { x: currentLayer.x + dx, y: currentLayer.y + dy });
-      }
+
+      selectedLayerIds.forEach(id => {
+        const base = dragInitialPositions[id];
+        if (base) {
+          onLayerUpdate(id, { x: base.x + dx, y: base.y + dy });
+        }
+      });
       setDragStart(pos);
     } else if (isDrawing) {
       setPreviewLayer(createPreviewLayer(activeTool, drawStart, pos));
@@ -446,6 +474,7 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     setPreviewLayer(null);
     setIsDragging(false);
     setIsPanning(false);
+    setDragInitialPositions({});
   };
 
   const handleWheel = (e: React.WheelEvent) => {
