@@ -10,8 +10,6 @@ interface CanvasProps {
   onLayerAdd: (layer: Omit<Layer, "id">) => void;
   onLayerUpdate: (layerId: string, updates: Partial<Layer>) => void;
   onViewportChange: (viewport: { x: number; y: number; zoom: number }) => void;
-  onGroupLayers?: (layerIds: string[]) => void;
-  onUngroupLayer?: (groupId: string) => void;
 }
 
 export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
@@ -49,14 +47,14 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     canvas.height = rect.height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    ctx.fillStyle = "#F9FAFB"; // A light grey background
+    ctx.fillStyle = "#F9FAFB";
     ctx.fillRect(0, 0, rect.width, rect.height);
 
     ctx.save();
     ctx.translate(viewport.x, viewport.y);
     ctx.scale(viewport.zoom, viewport.zoom);
 
-    drawGrid(ctx, rect.width / viewport.zoom, rect.height / viewport.zoom, viewport);
+    drawGrid(ctx, rect.width, rect.height, viewport);
 
     const rootLayers = layers.filter(layer => !layer.parentId);
     rootLayers.forEach(layer => {
@@ -79,20 +77,22 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     ctx.strokeStyle = "#E5E7EB";
     ctx.lineWidth = 1 / viewport.zoom;
     
-    const offsetX = viewport.x % gridSize;
-    const offsetY = viewport.y % gridSize;
+    const startX = -viewport.x / viewport.zoom;
+    const startY = -viewport.y / viewport.zoom;
+    const endX = (width - viewport.x) / viewport.zoom;
+    const endY = (height - viewport.y) / viewport.zoom;
 
-    for (let x = -offsetX; x < width; x += gridSize) {
+    for (let x = Math.floor(startX / gridSize) * gridSize; x < endX; x += gridSize) {
       ctx.beginPath();
-      ctx.moveTo(x, -offsetY);
-      ctx.lineTo(x, height - offsetY);
+      ctx.moveTo(x, startY);
+      ctx.lineTo(x, endY);
       ctx.stroke();
     }
 
-    for (let y = -offsetY; y < height; y += gridSize) {
+    for (let y = Math.floor(startY / gridSize) * gridSize; y < endY; y += gridSize) {
       ctx.beginPath();
-      ctx.moveTo(-offsetX, y);
-      ctx.lineTo(width - offsetX, y);
+      ctx.moveTo(startX, y);
+      ctx.lineTo(endX, y);
       ctx.stroke();
     }
   };
@@ -225,16 +225,16 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         const metrics = ctx.measureText(testLine);
         const testWidth = metrics.width;
         if (testWidth > containerWidth && n > 0) {
-          lines.push(line);
+          lines.push(line.trim());
           line = words[n] + ' ';
         } else {
           line = testLine;
         }
       }
-      lines.push(line);
+      lines.push(line.trim());
 
       const lineSpacing = fontSize * lineHeight;
-      const totalTextHeight = lines.length * lineSpacing - (lineHeight - 1) * fontSize;
+      const totalTextHeight = (lines.length * lineSpacing) - ((lineHeight - 1) * fontSize);
       
       let startY;
       switch (verticalAlign) {
@@ -248,8 +248,9 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           startY = textY;
       }
 
+      ctx.textBaseline = "top";
       for (let i = 0; i < lines.length; i++) {
-        const lineY = startY + i * lineSpacing + fontSize / 2;
+        const lineY = startY + i * lineSpacing;
         let lineX = textX;
         
         ctx.textAlign = textAlign as CanvasTextAlign;
@@ -259,7 +260,6 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           lineX = textX + containerWidth;
         }
         
-        ctx.textBaseline = "middle";
         ctx.fillText(lines[i], lineX, lineY);
       }
     } else {
@@ -320,22 +320,23 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
 
       if (layer.visible === false || layer.locked) return null;
 
+      let hit = null;
       if (x >= absoluteX && x <= absoluteX + layer.width &&
           y >= absoluteY && y <= absoluteY + layer.height) {
-        
-        if (layer.type === 'group' && layer.properties?.children) {
-          for (let i = layer.properties.children.length - 1; i >= 0; i--) {
-            const childId = layer.properties.children[i];
-            const child = layers.find(l => l.id === childId);
-            if (child) {
-              const found = checkLayer(child, absoluteX, absoluteY);
-              if (found) return found;
-            }
+        hit = layer;
+      }
+
+      if (layer.type === 'group' && layer.properties?.children) {
+        for (let i = layer.properties.children.length - 1; i >= 0; i--) {
+          const childId = layer.properties.children[i];
+          const child = layers.find(l => l.id === childId);
+          if (child) {
+            const found = checkLayer(child, absoluteX, absoluteY);
+            if (found) return found;
           }
         }
-        return layer;
       }
-      return null;
+      return hit;
     };
 
     for (let i = layers.length - 1; i >= 0; i--) {
@@ -384,9 +385,22 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
 
     if (activeTool === "select") {
-      const layer = getLayerAt(pos.x, pos.y);
-      onLayerSelect(layer ? layer.id : null);
-      if (layer) setIsDragging(true);
+      const clickedLayer = getLayerAt(pos.x, pos.y);
+      if (clickedLayer) {
+        let selectableLayer = clickedLayer;
+        while (selectableLayer.parentId) {
+          const parent = canvasData.layers.find(l => l.id === selectableLayer.parentId);
+          if (parent) {
+            selectableLayer = parent;
+          } else {
+            break;
+          }
+        }
+        onLayerSelect(selectableLayer.id);
+        setIsDragging(true);
+      } else {
+        onLayerSelect(null);
+      }
     } else if (activeTool === "pan") {
       setIsPanning(true);
     } else {
