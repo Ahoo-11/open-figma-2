@@ -140,15 +140,13 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     ctx.globalAlpha = layer.opacity || 1;
 
     switch (layer.type) {
-      case "rectangle":
-      case "container":
+      case "rectangle": {
         ctx.fillStyle = layer.properties.fill || "transparent";
         if (layer.properties.cornerRadius) {
           drawRoundedRect(ctx, layer.x, layer.y, layer.width, layer.height, layer.properties.cornerRadius);
         } else {
           ctx.fillRect(layer.x, layer.y, layer.width, layer.height);
         }
-        
         if (layer.properties.stroke && layer.properties.strokeWidth) {
           ctx.strokeStyle = layer.properties.stroke;
           ctx.lineWidth = layer.properties.strokeWidth;
@@ -158,11 +156,32 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
           }
         }
-
-        if ((layer.type === "container" || layer.type === "text") && layer.properties.text) {
+        break;
+      }
+      case "container": {
+        const background = (layer.properties as any).background || (layer.properties as any).backgroundFill || (layer.properties as any).bg || "transparent";
+        if (background !== "transparent") {
+          ctx.fillStyle = background;
+          if (layer.properties.cornerRadius) {
+            drawRoundedRect(ctx, layer.x, layer.y, layer.width, layer.height, layer.properties.cornerRadius);
+          } else {
+            ctx.fillRect(layer.x, layer.y, layer.width, layer.height);
+          }
+        }
+        if (layer.properties.stroke && layer.properties.strokeWidth) {
+          ctx.strokeStyle = layer.properties.stroke;
+          ctx.lineWidth = layer.properties.strokeWidth;
+          if (layer.properties.cornerRadius) {
+            drawRoundedRect(ctx, layer.x, layer.y, layer.width, layer.height, layer.properties.cornerRadius, true);
+          } else {
+            ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
+          }
+        }
+        if (layer.properties.text) {
           drawTextInContainer(ctx, layer);
         }
         break;
+      }
 
       case "circle":
         const centerX = layer.x + layer.width / 2;
@@ -184,6 +203,14 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       case "text":
         drawTextInContainer(ctx, layer);
         break;
+      default: {
+        ctx.fillStyle = (layer.properties as any).background || layer.properties.fill || "#DDDDDD";
+        ctx.fillRect(layer.x, layer.y, layer.width, layer.height);
+        if (layer.properties.text) {
+          drawTextInContainer(ctx, layer);
+        }
+        break;
+      }
     }
 
     if (isSelected) {
