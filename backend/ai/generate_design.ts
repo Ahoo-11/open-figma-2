@@ -90,7 +90,7 @@ REMEMBER:
           "X-Title": "DesignStudio AI"
         },
         body: JSON.stringify({
-          model: "anthropic/claude-3-haiku",
+          model: "x-ai/grok-code-fast-1",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
