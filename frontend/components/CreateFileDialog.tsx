@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FileText, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,13 +13,20 @@ interface CreateFileDialogProps {
   onClose: () => void;
   projectId: number;
   onFileCreated: (fileId: number) => void;
+  startWithAI?: boolean;
 }
 
-export function CreateFileDialog({ isOpen, onClose, projectId, onFileCreated }: CreateFileDialogProps) {
+export function CreateFileDialog({ isOpen, onClose, projectId, onFileCreated, startWithAI }: CreateFileDialogProps) {
   const [fileName, setFileName] = useState("");
   const [creating, setCreating] = useState(false);
   const [showAIDialog, setShowAIDialog] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (isOpen && startWithAI) {
+      setShowAIDialog(true);
+    }
+  }, [isOpen, startWithAI]);
 
   const handleCreateBlankFile = async () => {
     if (!fileName.trim()) {
@@ -28,7 +35,7 @@ export function CreateFileDialog({ isOpen, onClose, projectId, onFileCreated }: 
         description: "Please enter a file name",
         variant: "destructive",
       });
-      return;
+        return;
     }
 
     setCreating(true);
