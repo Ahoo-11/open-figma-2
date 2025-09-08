@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   Layers, 
   Home, 
@@ -10,14 +10,20 @@ import {
   ChevronDown,
   Search,
   Share2,
-  HelpCircle
+  HelpCircle,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export function Header() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isDesignEditor = location.pathname.startsWith("/design/");
+
+  const openNewDesign = () => {
+    navigate("/dashboard", { state: { openAIDialog: true } });
+  };
 
   return (
     <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md shadow-sm sticky top-0 z-50">
@@ -42,10 +48,14 @@ export function Header() {
           {!isDesignEditor && (
             <nav className="flex items-center space-x-1">
               <Button variant="ghost" size="sm" asChild className="text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100">
-                <Link to="/" className="flex items-center space-x-2">
+                <Link to="/dashboard" className="flex items-center space-x-2">
                   <Home className="h-4 w-4" />
-                  <span className="font-medium">Projects</span>
+                  <span className="font-medium">Dashboard</span>
                 </Link>
+              </Button>
+              <Button variant="outline" size="sm" onClick={openNewDesign} className="ml-1">
+                <Sparkles className="h-4 w-4 mr-1" />
+                New Design
               </Button>
             </nav>
           )}

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect, useCallback } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   Plus, 
   Folder, 
@@ -9,12 +9,8 @@ import {
   Trash2, 
   MoreHorizontal,
   Search,
-  Filter,
   Grid3X3,
   List,
-  Star,
-  Clock,
-  Users,
   Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,12 +26,16 @@ import backend from "~backend/client";
 import type { Project, DesignFile } from "~backend/design/types";
 
 export function ProjectList() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [designFiles, setDesignFiles] = useState<Record<number, DesignFile[]>>({});
   const [loading, setLoading] = useState(true);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createFileOpen, setCreateFileOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [startAIForDialog, setStartAIForDialog] = useState(false);
   const [newProject, setNewProject] = useState({ name: "", description: "" });
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -84,7 +84,7 @@ export function ProjectList() {
           { id: 4, name: "Analytics View", created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
           { id: 5, name: "User Management", created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
         ]
-      };
+      } as Record<number, DesignFile[]>;
 
       setProjects(mockProjects);
       setDesignFiles(mockFiles);
@@ -152,8 +152,7 @@ export function ProjectList() {
     setCreateFileOpen(false);
     setSelectedProjectId(null);
     loadProjects();
-    // Navigate to the new file
-    window.location.href = `/design/${fileId}`;
+    navigate(`/design/${fileId}`);
   };
 
   const handleDuplicateFile = async (fileId: number, fileName: string) => {
@@ -218,6 +217,35 @@ export function ProjectList() {
       });
     }
   };
+
+  const openAIPrompt = useCallback(async () => {
+    try {
+      let projectId: number | null = null;
+      if (projects.length > 0) {
+        projectId = projects[0].id;
+      } else {
+        const created = await backend.design.createProject({ name: "My First Project" });
+        projectId = created.project.id;
+        await loadProjects();
+        toast({ title: "Project created", description: "Created 'My First Project' automatically." });
+      }
+      if (projectId) {
+        setSelectedProjectId(projectId);
+        setStartAIForDialog(true);
+        setCreateFileOpen(true);
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to start AI prompt", variant: "destructive" });
+    }
+  }, [projects]);
+
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.openAIDialog) {
+      openAIPrompt();
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, openAIPrompt, navigate, location.pathname]);
 
   const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -354,14 +382,25 @@ export function ProjectList() {
             <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8 max-w-md mx-auto">
               Create your first project and begin designing amazing experiences with AI assistance
             </p>
-            <Button 
-              onClick={() => setCreateProjectOpen(true)}
-              size="lg"
-              className="gradient-primary text-white shadow-lg hover:shadow-xl transition-all duration-200"
-            >
-              <Plus className="h-5 w-5 mr-2" />
-              Create Your First Project
-            </Button>
+            <div className="flex items-center justify-center gap-3">
+              <Button 
+                onClick={() => setCreateProjectOpen(true)}
+                size="lg"
+                className="gradient-primary text-white shadow-lg hover:shadow-xl transition-all duration-200"
+              >
+                <Plus className="h-5 w-5 mr-2" />
+                Create Project
+              </Button>
+              <Button 
+                onClick={openAIPrompt}
+                size="lg"
+                variant="outline"
+                className="border-primary-300 text-primary-600 dark:border-primary-800 dark:text-primary-300"
+              >
+                <Sparkles className="h-5 w-5 mr-2" />
+                Generate from Prompt
+              </Button>
+            </div>
           </div>
         ) : (
           <div className={viewMode === "grid" ? "grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8" : "space-y-6"}>
@@ -396,6 +435,7 @@ export function ProjectList() {
                         size="sm"
                         onClick={() => {
                           setSelectedProjectId(project.id);
+                          setStartAIForDialog(false);
                           setCreateFileOpen(true);
                         }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40"
@@ -491,6 +531,7 @@ export function ProjectList() {
                         size="sm"
                         onClick={() => {
                           setSelectedProjectId(project.id);
+                          setStartAIForDialog(true);
                           setCreateFileOpen(true);
                         }}
                         className="text-primary-600 hover:text-primary-700 group/button"
@@ -515,6 +556,7 @@ export function ProjectList() {
             onClose={() => setCreateFileOpen(false)}
             projectId={selectedProjectId}
             onFileCreated={handleFileCreated}
+            startWithAI={startAIForDialog}
           />
         )}
       </div>
