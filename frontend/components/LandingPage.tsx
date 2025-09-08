@@ -27,8 +27,8 @@ export default function LandingPage() {
             <Button onClick={openDashboard} size="lg" className="gradient-primary text-white px-6 py-6">
               Open Dashboard
             </Button>
-            <Button onClick={generateFromPrompt} size="lg" variant="outline" className="border-neutral-700 text-white hover:bg-neutral-800">
-              <Sparkles className="w-4 h-4 mr-2" />
+            <Button onClick={generateFromPrompt} size="lg" variant="outline" className="bg-white text-black hover:bg-neutral-200 border-transparent">
+              <Sparkles className="w-4 h-4 mr-2 text-black" />
               Generate from Prompt
             </Button>
           </div>
