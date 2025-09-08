@@ -122,7 +122,8 @@ export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
 
     if (layer.type === 'group' && layer.properties?.children) {
-      layer.properties.children.forEach(childId => {
+      const drawOrder = [...layer.properties.children].reverse();
+      drawOrder.forEach(childId => {
         const childLayer = allLayers.find(l => l.id === childId);
         if (childLayer) {
           drawLayerRecursive(ctx, childLayer, allLayers, currentSelectedIds);
